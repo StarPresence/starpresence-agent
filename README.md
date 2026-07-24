@@ -72,7 +72,14 @@ The CLI deliberately pins its development contract to the exact MCP release. For
 2. Publish the verified `@starreview/mcp` version.
 3. Run ordinary CLI CI, the packed production canary, and then publish `@starreview/cli`.
 
-Ordinary CLI CI is expected to fail with an npm `E404` before step 2; do not loosen the exact MCP pin to work around that ordering. The protected `production-canary` GitHub environment must provide the `STARREVIEW_CANARY_API_KEY` secret and the `STARREVIEW_CANARY_BUSINESS_ID` environment variable for its dedicated synthetic business.
+Ordinary CLI CI is expected to fail with an npm `E404` before step 2; do not loosen the exact MCP pin to work around that ordering.
+
+The protected `production-canary` GitHub environment must provide:
+
+- Secret `STARREVIEW_CANARY_PER_BUSINESS_API_KEY`: a legacy/admin-issued `sragt_` credential pinned to the dedicated synthetic business. Never use an account-wide self-service key. The workflow maps this secret to the canary runtime's `STARREVIEW_CANARY_API_KEY`.
+- Variable `STARREVIEW_CANARY_BUSINESS_ID`: the expected dedicated synthetic business ID.
+
+The canary scopes `list_locations` to that expected business and rejects picker, empty, inactive, malformed, or explicitly mismatched results. The API response cannot independently prove whether an `sragt_` credential is per-business or account-wide, so correct secret provisioning remains an operational requirement. Run `npm run canary:production -- --help` to display these requirements without making a request.
 
 ## License
 

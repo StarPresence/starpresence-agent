@@ -52,7 +52,7 @@ jobs:
       - name: Exercise packed candidate (read-only)
         shell: bash
         env:
-          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
+          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_PER_BUSINESS_API_KEY }}
           STARREVIEW_CANARY_BUSINESS_ID: ${{ vars.STARREVIEW_CANARY_BUSINESS_ID }}
           STARREVIEW_TIMEOUT_MS: '30000'
         run: |

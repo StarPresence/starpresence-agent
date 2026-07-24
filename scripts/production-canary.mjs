@@ -3,6 +3,8 @@
 // Deliberately read-only production canary. It exercises only service
 // discovery, tool discovery, and location listing for a dedicated synthetic
 // business. Drafting, submission, scheduling, and publishing are never called.
+// Credential class is an operational invariant: the sragt_ prefix cannot prove
+// that the supplied key is legacy/admin-issued and pinned to one business.
 
 import { pathToFileURL } from 'node:url';
 import {
@@ -19,6 +21,19 @@ export const CANARY_CALLS = Object.freeze([
   'authenticated:tools/list',
   'authenticated:list_locations',
 ]);
+
+export const CANARY_HELP = `StarReview read-only production canary
+
+Required environment:
+  STARREVIEW_CANARY_API_KEY       Legacy/admin-issued sragt_ credential pinned
+                                  to the dedicated synthetic business. An
+                                  account-wide self-service key is not valid.
+  STARREVIEW_CANARY_BUSINESS_ID   Expected synthetic business ID.
+
+The canary scopes list_locations to the expected business and rejects picker,
+empty, inactive, malformed, or explicitly mismatched results. It cannot
+independently introspect the credential class, so operators must provision the
+per-business credential correctly.`;
 
 function canaryError(message) {
   return new CliError('canary_failed', message);
@@ -95,7 +110,7 @@ export async function runProductionCanary({ env = process.env, fetchImpl = fetch
   if (!apiKey?.startsWith('sragt_')) {
     throw new CliError(
       'invalid_configuration',
-      'STARREVIEW_CANARY_API_KEY must be a dedicated sragt_ key for the synthetic canary business',
+      'STARREVIEW_CANARY_API_KEY must be a legacy/admin-issued sragt_ credential pinned to the dedicated synthetic business; an account-wide self-service key is not valid',
     );
   }
   const businessId = env.STARREVIEW_CANARY_BUSINESS_ID;
@@ -165,6 +180,10 @@ export async function runProductionCanary({ env = process.env, fetchImpl = fetch
 }
 
 async function runFromCommandLine() {
+  if (process.argv.slice(2).some((arg) => arg === '--help' || arg === '-h')) {
+    console.log(CANARY_HELP);
+    return;
+  }
   try {
     const result = await runProductionCanary();
     console.log(JSON.stringify(result, null, 2));

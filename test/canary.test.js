@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CANARY_CALLS, runProductionCanary } from '../scripts/production-canary.mjs';
+import { CANARY_CALLS, CANARY_HELP, runProductionCanary } from '../scripts/production-canary.mjs';
 
 function envelope(payload) {
   return {
@@ -81,9 +81,19 @@ test('production canary refuses a non-dedicated credential before network access
   const fetchImpl = fakeCanaryFetch();
   await assert.rejects(
     runProductionCanary({ env: { STARREVIEW_CANARY_API_KEY: 'not-an-agent-key' }, fetchImpl }),
-    (err) => err.code === 'invalid_configuration',
+    (err) => (
+      err.code === 'invalid_configuration'
+      && /legacy\/admin-issued/.test(err.message)
+      && /account-wide self-service/.test(err.message)
+    ),
   );
   assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('production canary help makes the per-business credential limitation explicit', () => {
+  assert.match(CANARY_HELP, /legacy\/admin-issued sragt_ credential pinned/i);
+  assert.match(CANARY_HELP, /account-wide self-service key is not valid/);
+  assert.match(CANARY_HELP, /cannot\s+independently introspect the credential class/i);
 });
 
 test('production canary requires an explicit synthetic business before network access', async () => {
