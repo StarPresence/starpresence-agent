@@ -27,5 +27,7 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # --provenance emits a signed provenance statement (free with OIDC
+      # trusted publishing; id-token: write above enables it).
       - name: Publish
-        run: npm publish --access public
+        run: npm publish --access public --provenance
