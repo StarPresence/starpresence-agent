@@ -6,9 +6,9 @@
  * tool payload verbatim; failure prints { "error": code, "message": ... } and
  * exits non-zero. Usage problems print usage to stderr and exit 2.
  *
- * The CLI is a thin client over the hosted MCP endpoint: it drafts and submits
- * replies into the owner's approval queue and can NEVER publish — the server
- * has no publish tool (see SKILL.md, "Boundaries").
+ * The CLI is a thin client over the hosted MCP endpoint. It drafts and submits
+ * replies but can never post them itself. StarReview applies the owner's
+ * approval and automatic-publishing settings (see SKILL.md, "Boundaries").
  */
 
 import { parseArgs } from 'node:util';
@@ -24,10 +24,10 @@ Commands (authenticated):
   reviews     [--business <id>] [--location <id>] [--provider <slug>] [--limit <n>]
                                                       unanswered reviews
   review      <reviewId>                              full review context + drafts
-  draft       <reviewId>                              generate reply drafts (pending approval)
+  draft       <reviewId>                              generate reply drafts
   submit      <reviewId> --variant <n> [--text <s>] [--post-at <iso>]
-                                                      submit a StarReview draft for approval
-  submit      <reviewId> --text <s> [--post-at <iso>] submit your OWN text for approval
+                                                      submit a StarReview draft
+  submit      <reviewId> --text <s> [--post-at <iso>] submit your OWN text (always pending)
   stats       [--business <id>] [--location <id>] [--days <n>]
                                                       read-only review KPIs
 
@@ -36,8 +36,10 @@ Commands (no key needed):
   check       "<business name>" [--place <placeId>] [--lang de|fr|it|en]
                                                       free response-rate check
 
-Every reply an agent submits waits for the owner's approval. The CLI cannot
-post to Google or any other platform.`;
+The CLI never posts to Google or any other platform. An eligible, unedited
+StarReview draft may be scheduled under the owner's standing consent and
+automatic-publishing settings. Agent-written, edited, or safety-held replies
+remain pending.`;
 
 function usageError(message) {
   const err = new Error(message);
@@ -53,10 +55,15 @@ function parse(argv, options, allowPositionals = false) {
   }
 }
 
-function intOrUsage(value, flag) {
+function intOrUsage(value, flag, maximum) {
   if (value === undefined) return undefined;
-  const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || n <= 0) throw usageError(`--${flag} must be a positive integer`);
+  if (!/^[0-9]+$/.test(value)) {
+    throw usageError(`--${flag} must be an integer from 1 to ${maximum}`);
+  }
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 1 || n > maximum) {
+    throw usageError(`--${flag} must be an integer from 1 to ${maximum}`);
+  }
   return n;
 }
 
@@ -82,7 +89,7 @@ async function cmdReviews(argv, ctx) {
       businessId: values.business,
       locationId: values.location,
       provider: values.provider,
-      limit: intOrUsage(values.limit, 'limit'),
+      limit: intOrUsage(values.limit, 'limit', 50),
     }),
     ...ctx,
   });
@@ -116,7 +123,7 @@ async function cmdSubmit(argv, ctx) {
       name: 'submit_reply_for_approval',
       args: prune({
         reviewId,
-        variant: intOrUsage(values.variant, 'variant'),
+        variant: intOrUsage(values.variant, 'variant', Number.MAX_SAFE_INTEGER),
         finalText: values.text,
         preferredPostAt: postAt,
       }),
@@ -145,7 +152,7 @@ async function cmdStats(argv, ctx) {
     args: prune({
       businessId: values.business,
       locationId: values.location,
-      days: intOrUsage(values.days, 'days'),
+      days: intOrUsage(values.days, 'days', 3650),
     }),
     ...ctx,
   });

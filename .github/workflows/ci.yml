@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 18.17.0
+          - 20
+          - 22
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install exact contract and test dependencies
+        run: npm install --ignore-scripts
+
+      - name: Test
+        run: npm test
+
+      - name: Verify package contents
+        if: matrix.node-version == 22
+        run: npm run pack:check

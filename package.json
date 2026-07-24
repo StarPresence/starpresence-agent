@@ -1,7 +1,7 @@
 {
   "name": "@starreview/cli",
-  "version": "0.1.0",
-  "description": "Social review management for AI agents: list reviews, draft replies, submit for owner approval via the StarReview MCP endpoint. Agent drafts, human approves - the CLI can never publish.",
+  "version": "0.1.1",
+  "description": "Social review management for AI agents: list reviews, draft and submit replies through StarReview's owner-controlled publishing policy. The CLI can never post.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -10,6 +10,7 @@
   "files": [
     "bin/",
     "src/",
+    "scripts/production-canary.mjs",
     "SKILL.md",
     "README.md",
     "LICENSE"
@@ -18,7 +19,14 @@
     "node": ">=18.17"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:contract": "node --test test/contract.test.js",
+    "canary:production": "node scripts/production-canary.mjs",
+    "pack:check": "npm pack --dry-run"
+  },
+  "devDependencies": {
+    "@starreview/mcp": "0.6.1",
+    "ajv": "^8.17.1"
   },
   "repository": {
     "type": "git",

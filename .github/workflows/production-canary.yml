@@ -1,21 +1,16 @@
-# Publish @starreview/cli to npm via Trusted Publishing (OIDC — no tokens, no
-# OTP). Modeled on the backend's npm-publish-mcp.yml. Manual trigger only:
-#   gh workflow run npm-publish.yml
-# Precondition: the npm package settings for @starreview/cli list THIS repo +
-# workflow as a trusted publisher.
-
-name: npm-publish
+name: production-canary
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  canary:
+  read-only-canary:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-canary
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +22,7 @@ jobs:
       - name: Install exact contract and test dependencies
         run: npm install --ignore-scripts
 
-      - name: Run tests
+      - name: Test
         run: npm test
 
       - name: Pack candidate
@@ -52,31 +47,3 @@ jobs:
           STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
           STARREVIEW_TIMEOUT_MS: '30000'
         run: npm run canary:production
-
-  publish:
-    needs: canary
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-
-      - name: Install exact contract and test dependencies
-        run: npm install --ignore-scripts
-
-      - name: Run tests
-        run: npm test
-
-      - name: Verify package contents
-        run: npm run pack:check
-
-      # --provenance emits a signed provenance statement (free with OIDC
-      # trusted publishing; id-token: write above enables it).
-      - name: Publish
-        run: npm publish --access public --provenance

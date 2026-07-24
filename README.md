@@ -1,8 +1,8 @@
 # StarReview agent CLI
 
-Review management for AI agents. `starreview` lets any agent that can run a shell command (Claude Code, Codex, OpenClaw, nanoclaw, Hermes, and friends) manage a business's online review replies: list unanswered reviews across platforms, draft replies in the owner's voice, submit them into the owner's approval queue, and report review KPIs.
+Review management for AI agents. `starreview` lets any agent that can run a shell command (Claude Code, Codex, OpenClaw, nanoclaw, Hermes, and friends) manage a business's online review replies: list unanswered reviews across platforms, draft replies in the owner's voice, submit them to StarReview, and report review KPIs.
 
-**The safety model is the product:** the agent drafts, the human approves, StarReview publishes. There is no publish command - an agent can never post a reply itself.
+**The safety model is the product:** the agent drafts and submits; it never posts. StarReview applies the owner's existing approval and automatic-publishing settings. An eligible, unedited StarReview draft may be scheduled without another click when standing consent and safety checks allow it. Agent-written, edited, or safety-held replies remain pending.
 
 ## Install
 
@@ -10,6 +10,8 @@ Review management for AI agents. `starreview` lets any agent that can run a shel
 npm install -g @starreview/cli
 export STARREVIEW_API_KEY=sragt_...
 ```
+
+Requests time out after 120 seconds by default. Set `STARREVIEW_TIMEOUT_MS` to a whole number from `1000` through `600000` to override it.
 
 Or as an agent skill:
 
@@ -56,7 +58,7 @@ $ starreview submit 8b1c... --variant 1
 { "submitted": true, "autoScheduled": false, "gateOutcomes": { ... } }
 ```
 
-The reply now waits in the owner's StarReview approval queue.
+Here `autoScheduled: false` means the reply waits in the owner's StarReview approval queue. When an eligible, unedited StarReview draft returns `autoScheduled: true`, StarReview has scheduled it under the owner's standing consent. The CLI itself never posts.
 
 ## What this repo is (and is not)
 
