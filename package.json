@@ -1,0 +1,38 @@
+{
+  "name": "@starreview/cli",
+  "version": "0.1.0",
+  "description": "Social review management for AI agents: list reviews, draft replies, submit for owner approval via the StarReview MCP endpoint. Agent drafts, human approves - the CLI can never publish.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "starreview": "bin/starreview.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Fabsbags/starreview-agent.git"
+  },
+  "homepage": "https://www.starreview.ch/agents/",
+  "keywords": [
+    "reviews",
+    "google-business-profile",
+    "ai-agent",
+    "mcp",
+    "cli",
+    "reputation",
+    "claude",
+    "review-management"
+  ]
+}

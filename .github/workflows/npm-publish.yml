@@ -1,0 +1,31 @@
+# Publish @starreview/cli to npm via Trusted Publishing (OIDC — no tokens, no
+# OTP). Modeled on the backend's npm-publish-mcp.yml. Manual trigger only:
+#   gh workflow run npm-publish.yml
+# Precondition: the npm package settings for @starreview/cli list THIS repo +
+# workflow as a trusted publisher.
+
+name: npm-publish
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Run tests
+        run: npm test
+
+      - name: Publish
+        run: npm publish --access public
