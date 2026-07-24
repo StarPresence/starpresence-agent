@@ -1,8 +1,9 @@
 # Publish @starreview/cli to npm via Trusted Publishing (OIDC — no tokens, no
 # OTP). Modeled on the backend's npm-publish-mcp.yml. Manual trigger only:
 #   gh workflow run npm-publish.yml
-# Precondition: the npm package settings for @starreview/cli list THIS repo +
-# workflow as a trusted publisher.
+# Preconditions: @starreview/mcp@0.6.1 is already published, and the npm
+# package settings for @starreview/cli list THIS repo + workflow as a trusted
+# publisher.
 
 name: npm-publish
 
@@ -10,7 +11,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  release-ref:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require the main branch
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Refusing to publish from $GITHUB_REF; dispatch this workflow from main." >&2
+            exit 1
+          fi
+
   canary:
+    needs: release-ref
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-canary
@@ -34,24 +49,19 @@ jobs:
         shell: bash
         run: npm pack --silent > "$RUNNER_TEMP/starreview-package-name"
 
-      - name: Exercise packed CLI (read-only)
+      - name: Exercise packed candidate (read-only)
         shell: bash
         env:
-          STARREVIEW_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
+          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
+          STARREVIEW_CANARY_BUSINESS_ID: ${{ vars.STARREVIEW_CANARY_BUSINESS_ID }}
           STARREVIEW_TIMEOUT_MS: '30000'
         run: |
           package_name="$(cat "$RUNNER_TEMP/starreview-package-name")"
-          npm install --global "./$package_name"
-          starreview info > "$RUNNER_TEMP/starreview-info.json"
-          starreview locations > "$RUNNER_TEMP/starreview-locations.json"
-          node -e "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))" "$RUNNER_TEMP/starreview-info.json"
-          node -e "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))" "$RUNNER_TEMP/starreview-locations.json"
-
-      - name: Exercise public and authenticated discovery (read-only)
-        env:
-          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
-          STARREVIEW_TIMEOUT_MS: '30000'
-        run: npm run canary:production
+          candidate_dir="$RUNNER_TEMP/starreview-cli-candidate"
+          mkdir -p "$candidate_dir"
+          tar -xzf "$package_name" -C "$candidate_dir"
+          node "$candidate_dir/package/bin/starreview.js" --help > "$RUNNER_TEMP/starreview-help.txt" 2>&1
+          node "$candidate_dir/package/scripts/production-canary.mjs"
 
   publish:
     needs: canary

@@ -69,12 +69,40 @@ function assertToolset(tools, requiredName, label) {
   return names;
 }
 
+function assertSyntheticLocations(payload, expectedBusinessId) {
+  if (Array.isArray(payload?.businesses) || payload?.hint) {
+    throw canaryError('list_locations returned a multi-business picker instead of the synthetic target');
+  }
+  if (!Array.isArray(payload) || payload.length === 0) {
+    throw canaryError('list_locations did not return locations for the synthetic target');
+  }
+  for (const location of payload) {
+    if (typeof location?.locationId !== 'string' || location.locationId.length === 0) {
+      throw canaryError('list_locations returned a location without a locationId');
+    }
+    if (location.businessId !== undefined && location.businessId !== expectedBusinessId) {
+      throw canaryError(`list_locations returned a location outside ${expectedBusinessId}`);
+    }
+  }
+  if (!payload.some((location) => location.status === 'active')) {
+    throw canaryError('list_locations returned no active synthetic location');
+  }
+  return payload.length;
+}
+
 export async function runProductionCanary({ env = process.env, fetchImpl = fetch } = {}) {
   const apiKey = env.STARREVIEW_CANARY_API_KEY;
   if (!apiKey?.startsWith('sragt_')) {
     throw new CliError(
       'invalid_configuration',
       'STARREVIEW_CANARY_API_KEY must be a dedicated sragt_ key for the synthetic canary business',
+    );
+  }
+  const businessId = env.STARREVIEW_CANARY_BUSINESS_ID;
+  if (typeof businessId !== 'string' || businessId.trim() !== businessId || businessId.length === 0) {
+    throw new CliError(
+      'invalid_configuration',
+      'STARREVIEW_CANARY_BUSINESS_ID must identify the dedicated synthetic canary business',
     );
   }
 
@@ -115,21 +143,24 @@ export async function runProductionCanary({ env = process.env, fetchImpl = fetch
     timeoutMs,
     fetchImpl,
   });
-  await callTool({
+  const locations = await callTool({
     name: 'list_locations',
-    args: {},
+    args: { businessId },
     env: cliEnv,
     fetchImpl,
   });
 
   const publicNames = assertToolset(publicTools, 'get_service_info', 'public');
   const authenticatedNames = assertToolset(authenticatedTools, 'list_locations', 'authenticated');
+  const locationCount = assertSyntheticLocations(locations, businessId);
   return {
     ok: true,
     endpoint,
+    businessId,
     checks: CANARY_CALLS,
     publicToolCount: publicNames.length,
     authenticatedToolCount: authenticatedNames.length,
+    locationCount,
   };
 }
 

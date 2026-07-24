@@ -29,21 +29,16 @@ jobs:
         shell: bash
         run: npm pack --silent > "$RUNNER_TEMP/starreview-package-name"
 
-      - name: Exercise packed CLI (read-only)
+      - name: Exercise packed candidate (read-only)
         shell: bash
         env:
-          STARREVIEW_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
+          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
+          STARREVIEW_CANARY_BUSINESS_ID: ${{ vars.STARREVIEW_CANARY_BUSINESS_ID }}
           STARREVIEW_TIMEOUT_MS: '30000'
         run: |
           package_name="$(cat "$RUNNER_TEMP/starreview-package-name")"
-          npm install --global "./$package_name"
-          starreview info > "$RUNNER_TEMP/starreview-info.json"
-          starreview locations > "$RUNNER_TEMP/starreview-locations.json"
-          node -e "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))" "$RUNNER_TEMP/starreview-info.json"
-          node -e "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))" "$RUNNER_TEMP/starreview-locations.json"
-
-      - name: Exercise public and authenticated discovery (read-only)
-        env:
-          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_API_KEY }}
-          STARREVIEW_TIMEOUT_MS: '30000'
-        run: npm run canary:production
+          candidate_dir="$RUNNER_TEMP/starreview-cli-candidate"
+          mkdir -p "$candidate_dir"
+          tar -xzf "$package_name" -C "$candidate_dir"
+          node "$candidate_dir/package/bin/starreview.js" --help > "$RUNNER_TEMP/starreview-help.txt" 2>&1
+          node "$candidate_dir/package/scripts/production-canary.mjs"

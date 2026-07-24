@@ -53,6 +53,9 @@ test('the CLI pins and loads the coordinated MCP contract version', () => {
   assert.equal(mcpPackage.version, '0.6.1');
   assert.equal(contract.serverVersion, '0.6.1');
   assert.equal(contract.agentConsent.currentVersion, '2026-07-24-v2');
+  assert.equal(contract.agentConsent.privacyDocumentKey, 'agent_mcp_privacy');
+  assert.equal(contract.agentConsent.privacyCurrentVersion, '2026-07-24-v2');
+  assert.equal(contract.agentConsent.requiredForAutomaticScheduling, true);
   assert.equal(contract.agentConsent.staleCredentialBehavior, 'submission_succeeds_pending');
   assert.equal(contract.agentConsent.staleSubmissionReason, 'agent_consent_upgrade_required');
   assert.equal(contract.publishingPolicy.agentCanPost, false);
@@ -60,6 +63,7 @@ test('the CLI pins and loads the coordinated MCP contract version', () => {
   assert.equal(contract.publishingPolicy.agentAuthoredRepliesRequireApproval, true);
   assert.equal(contract.publishingPolicy.editedRepliesRequireApproval, true);
   assert.equal(contract.publishingPolicy.safetyHeldRepliesRequireApproval, true);
+  assert.equal(contract.publishingPolicy.unsupportedProvidersRequireManualPost, true);
 });
 
 test('the coordinated contract requires draft variants to be positive integers', () => {

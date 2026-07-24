@@ -64,6 +64,16 @@ Here `autoScheduled: false` means the reply waits in the owner's StarReview appr
 
 This is a thin, MIT-licensed client over StarReview's hosted MCP endpoint (`https://mcp.starreview.ch/`). It contains no server code and no secrets; the only credential it ever touches is your own `STARREVIEW_API_KEY` environment variable. MCP-native clients (Claude, ChatGPT, Cursor) can skip the CLI and connect to the endpoint directly - see [starreview-mcp](https://github.com/Fabsbags/starreview-mcp) and [starreview.ch/agents](https://www.starreview.ch/agents/).
 
+## Coordinated release order (maintainers)
+
+The CLI deliberately pins its development contract to the exact MCP release. For a coordinated MCP/CLI release:
+
+1. Pack the MCP candidate in the backend repository. The backend candidate gate installs that local package into a CLI checkout and runs `npm run test:contract`; this does not require a registry release.
+2. Publish the verified `@starreview/mcp` version.
+3. Run ordinary CLI CI, the packed production canary, and then publish `@starreview/cli`.
+
+Ordinary CLI CI is expected to fail with an npm `E404` before step 2; do not loosen the exact MCP pin to work around that ordering. The protected `production-canary` GitHub environment must provide the `STARREVIEW_CANARY_API_KEY` secret and the `STARREVIEW_CANARY_BUSINESS_ID` environment variable for its dedicated synthetic business.
+
 ## License
 
 MIT
