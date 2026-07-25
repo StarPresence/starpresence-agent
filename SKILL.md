@@ -59,7 +59,7 @@ Every review carries `provider` (`google`, `tripadvisor`, ...). The value set GR
 
 - Never claim a reply was posted. Say it was submitted and report whether StarReview left it pending or scheduled it under standing consent.
 - Never present `awaitingManualPost` as posted; give the owner the link instead.
-- Negative and sensitive reviews always wait for a human; every draft passes a sentiment check.
+- Star rating alone does not force approval. An eligible, unedited StarReview draft for a 1–2-star review may be scheduled only when the owner explicitly opted into that automation. Safety-held, agent-written, and edited replies always remain pending.
 
 ## Error codes
 
