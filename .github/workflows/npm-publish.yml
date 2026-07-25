@@ -103,8 +103,8 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-
+      # No repository checkout or dependency install occurs with OIDC
+      # authority. This job only verifies and publishes the tested artifact.
       - uses: actions/setup-node@v4
         with:
           node-version: 24

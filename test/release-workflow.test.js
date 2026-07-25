@@ -56,4 +56,5 @@ test('OIDC only promotes the exact tested candidate artifact', () => {
   assert.match(publish, /Node[^]*22\.14\.0/);
   assert.match(publish, /npm[^]*11\.5\.1/);
   assert.doesNotMatch(publish, /\bnpm (?:install|ci|test|run)\b/);
+  assert.doesNotMatch(publish, /actions\/checkout/);
 });
