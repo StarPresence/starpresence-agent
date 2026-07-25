@@ -37,9 +37,11 @@ jobs:
       package_name: ${{ steps.candidate.outputs.package_name }}
       package_version: ${{ steps.candidate.outputs.package_version }}
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout v4.3.1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: actions/setup-node@v4
+      # actions/setup-node v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -86,8 +88,9 @@ jobs:
           node "$candidate_dir/package/bin/starreview.js" --help > "$RUNNER_TEMP/starreview-help.txt" 2>&1
           node "$candidate_dir/package/scripts/production-canary.mjs"
 
+      # actions/upload-artifact v4.6.2
       - name: Upload the tested release candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: starreview-cli-release-candidate
           path: |
@@ -105,7 +108,8 @@ jobs:
     steps:
       # No repository checkout or dependency install occurs with OIDC
       # authority. This job only verifies and publishes the tested artifact.
-      - uses: actions/setup-node@v4
+      # actions/setup-node v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -137,8 +141,9 @@ jobs:
             console.log(`Trusted Publishing runtime: Node ${process.argv[1]}, npm ${process.argv[2]}`);
           ' "$node_version" "$npm_version"
 
+      # actions/download-artifact v4.3.0
       - name: Download the tested release candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: starreview-cli-release-candidate
           path: ${{ runner.temp }}/starreview-cli-release-candidate
@@ -174,7 +179,23 @@ jobs:
       - name: Publish the exact tested tarball
         env:
           STARREVIEW_CANDIDATE_TARBALL: ${{ steps.verified.outputs.tarball }}
-        run: npm publish "$STARREVIEW_CANDIDATE_TARBALL" --access public --provenance
+        run: npm publish "$STARREVIEW_CANDIDATE_TARBALL" --access public --provenance --ignore-scripts
+
+  verify_registry:
+    needs:
+      - candidate
+      - publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # Registry verification deliberately has no OIDC permission. It checks
+      # the published bytes and contents after the trusted-publish job ends.
+      # actions/setup-node v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
 
       - name: Verify registry release
         shell: bash
