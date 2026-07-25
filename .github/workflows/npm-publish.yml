@@ -24,13 +24,18 @@ jobs:
             exit 1
           fi
 
-  canary:
+  candidate:
     needs: release-ref
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production-canary
     permissions:
       contents: read
+    outputs:
+      filename: ${{ steps.candidate.outputs.filename }}
+      sha256: ${{ steps.candidate.outputs.sha256 }}
+      package_name: ${{ steps.candidate.outputs.package_name }}
+      package_version: ${{ steps.candidate.outputs.package_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,26 +50,54 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Pack candidate
+      - name: Pack candidate and record its digest
+        id: candidate
         shell: bash
-        run: npm pack --silent > "$RUNNER_TEMP/starreview-package-name"
+        run: |
+          pack_dir="$RUNNER_TEMP/starreview-cli-candidate"
+          mkdir -p "$pack_dir"
+          filename="$(npm pack --silent --pack-destination "$pack_dir" | tail -n 1)"
+          if [[ -z "$filename" || ! -f "$pack_dir/$filename" ]]; then
+            echo "npm pack did not produce the expected candidate tarball." >&2
+            exit 1
+          fi
+
+          sha256="$(sha256sum "$pack_dir/$filename" | awk '{print $1}')"
+          printf '%s  %s\n' "$sha256" "$filename" > "$pack_dir/$filename.sha256"
+
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          echo "tarball=$pack_dir/$filename" >> "$GITHUB_OUTPUT"
+          echo "digest_file=$pack_dir/$filename.sha256" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          echo "package_name=$(node -p "require('./package.json').name")" >> "$GITHUB_OUTPUT"
+          echo "package_version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Exercise packed candidate (read-only)
         shell: bash
         env:
+          STARREVIEW_CANDIDATE_TARBALL: ${{ steps.candidate.outputs.tarball }}
           STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_PER_BUSINESS_API_KEY }}
           STARREVIEW_CANARY_BUSINESS_ID: ${{ vars.STARREVIEW_CANARY_BUSINESS_ID }}
           STARREVIEW_TIMEOUT_MS: '30000'
         run: |
-          package_name="$(cat "$RUNNER_TEMP/starreview-package-name")"
-          candidate_dir="$RUNNER_TEMP/starreview-cli-candidate"
+          candidate_dir="$RUNNER_TEMP/starreview-cli-unpacked"
           mkdir -p "$candidate_dir"
-          tar -xzf "$package_name" -C "$candidate_dir"
+          tar -xzf "$STARREVIEW_CANDIDATE_TARBALL" -C "$candidate_dir"
           node "$candidate_dir/package/bin/starreview.js" --help > "$RUNNER_TEMP/starreview-help.txt" 2>&1
           node "$candidate_dir/package/scripts/production-canary.mjs"
 
+      - name: Upload the tested release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: starreview-cli-release-candidate
+          path: |
+            ${{ steps.candidate.outputs.tarball }}
+            ${{ steps.candidate.outputs.digest_file }}
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
-    needs: canary
+    needs: candidate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -77,36 +110,90 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Install exact contract and test dependencies
-        run: npm install --ignore-scripts
+      - name: Require an OIDC-capable Node and npm runtime
+        shell: bash
+        run: |
+          node_version="$(node -p "process.versions.node")"
+          npm_version="$(npm --version)"
+          node -e '
+            const compare = (actual, minimum) => {
+              const a = actual.split(".").map(Number);
+              const b = minimum.split(".").map(Number);
+              for (let i = 0; i < 3; i += 1) {
+                if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) - (b[i] ?? 0);
+              }
+              return 0;
+            };
+            const requirements = [
+              [process.argv[1], "22.14.0", "Node"],
+              [process.argv[2], "11.5.1", "npm"],
+            ];
+            for (const [actual, minimum, label] of requirements) {
+              if (compare(actual, minimum) < 0) {
+                console.error(`${label} ${actual} is too old for npm Trusted Publishing; require >=${minimum}.`);
+                process.exit(1);
+              }
+            }
+            console.log(`Trusted Publishing runtime: Node ${process.argv[1]}, npm ${process.argv[2]}`);
+          ' "$node_version" "$npm_version"
 
-      - name: Run tests
-        run: npm test
+      - name: Download the tested release candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: starreview-cli-release-candidate
+          path: ${{ runner.temp }}/starreview-cli-release-candidate
 
-      - name: Verify package contents
-        run: npm run pack:check
+      - name: Verify the candidate digest
+        id: verified
+        shell: bash
+        env:
+          CANDIDATE_DIR: ${{ runner.temp }}/starreview-cli-release-candidate
+          CANDIDATE_FILENAME: ${{ needs.candidate.outputs.filename }}
+          CANDIDATE_SHA256: ${{ needs.candidate.outputs.sha256 }}
+        run: |
+          tarball="$CANDIDATE_DIR/$CANDIDATE_FILENAME"
+          digest_file="$tarball.sha256"
+          if [[ ! -f "$tarball" || ! -f "$digest_file" ]]; then
+            echo "The tested candidate tarball or its digest file is missing." >&2
+            exit 1
+          fi
+
+          (
+            cd "$CANDIDATE_DIR"
+            sha256sum --check "$CANDIDATE_FILENAME.sha256"
+          )
+          actual_sha256="$(sha256sum "$tarball" | awk '{print $1}')"
+          if [[ "$actual_sha256" != "$CANDIDATE_SHA256" ]]; then
+            echo "Candidate digest changed between test and publish jobs." >&2
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
       # --provenance emits a signed provenance statement (free with OIDC
       # trusted publishing; id-token: write above enables it).
-      - name: Publish
-        run: npm publish --access public --provenance
+      - name: Publish the exact tested tarball
+        env:
+          STARREVIEW_CANDIDATE_TARBALL: ${{ steps.verified.outputs.tarball }}
+        run: npm publish "$STARREVIEW_CANDIDATE_TARBALL" --access public --provenance
 
       - name: Verify registry release
         shell: bash
+        env:
+          CANDIDATE_SHA256: ${{ needs.candidate.outputs.sha256 }}
+          PACKAGE_NAME: ${{ needs.candidate.outputs.package_name }}
+          PACKAGE_VERSION: ${{ needs.candidate.outputs.package_version }}
         run: |
-          package_name="$(node -p "require('./package.json').name")"
-          package_version="$(node -p "require('./package.json').version")"
-          package_spec="${package_name}@${package_version}"
+          package_spec="${PACKAGE_NAME}@${PACKAGE_VERSION}"
 
           published_version=""
           for attempt in {1..12}; do
             published_version="$(npm view "$package_spec" version 2>/dev/null || true)"
-            if [[ "$published_version" == "$package_version" ]]; then
+            if [[ "$published_version" == "$PACKAGE_VERSION" ]]; then
               break
             fi
             sleep 5
           done
-          if [[ "$published_version" != "$package_version" ]]; then
+          if [[ "$published_version" != "$PACKAGE_VERSION" ]]; then
             echo "Registry did not expose $package_spec after publication." >&2
             exit 1
           fi
@@ -117,7 +204,16 @@ jobs:
             exit 1
           fi
 
-          registry_tarball="$(npm pack "$package_spec" --silent)"
+          registry_dir="$RUNNER_TEMP/starreview-registry-package"
+          mkdir -p "$registry_dir"
+          registry_filename="$(npm pack "$package_spec" --silent --pack-destination "$registry_dir" | tail -n 1)"
+          registry_tarball="$registry_dir/$registry_filename"
+          registry_sha256="$(sha256sum "$registry_tarball" | awk '{print $1}')"
+          if [[ "$registry_sha256" != "$CANDIDATE_SHA256" ]]; then
+            echo "Registry tarball differs from the production-tested candidate." >&2
+            exit 1
+          fi
+
           tar -tzf "$registry_tarball" > "$RUNNER_TEMP/starreview-registry-contents"
           for required_path in \
             package/package.json \

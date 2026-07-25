@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { main } from '../src/cli.js';
 
 const require = createRequire(import.meta.url);
@@ -71,6 +72,7 @@ test('the coordinated contract requires draft variants to be positive integers',
   assert.ok(submit, 'submit_reply_for_approval is missing from the MCP contract');
   assert.equal(submit.inputSchema.properties.variant.type, 'integer');
   assert.equal(submit.inputSchema.properties.variant.minimum, 1);
+  assert.equal(submit.inputSchema.properties.preferredPostAt.format, 'date-time');
 });
 
 test('every CLI request validates against its real MCP tool input schema', async () => {
@@ -97,6 +99,7 @@ test('every CLI request validates against its real MCP tool input schema', async
   const tools = [...contract.authenticatedTools, ...contract.publicTools];
   const schemaByName = new Map(tools.map((tool) => [tool.name, tool.inputSchema]));
   const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
 
   assert.ok(fetchImpl.calls.length > 0);
   for (const { body } of fetchImpl.calls) {

@@ -23,12 +23,40 @@ function fakeCanaryFetch() {
           result: {
             tools: url.endsWith('/public')
               ? [{ name: 'get_service_info' }, { name: 'search_business' }]
-              : [{ name: 'list_locations' }, { name: 'draft_reply' }, { name: 'submit_reply_for_approval' }],
+              : [
+                  { name: 'list_locations' },
+                  { name: 'draft_reply' },
+                  {
+                    name: 'submit_reply_for_approval',
+                    inputSchema: {
+                      type: 'object',
+                      properties: { variant: { type: 'integer', minimum: 1 } },
+                    },
+                  },
+                ],
           },
         }
       : envelope(body.params.name === 'list_locations'
           ? [{ locationId: 'location-synthetic', name: 'Synthetic Canary', status: 'active' }]
-          : { service: 'StarReview' });
+          : {
+              service: 'StarReview',
+              what: 'Agents can draft and submit but can never post. On a live posting API, an eligible, unedited StarReview draft may schedule under standing consent, while agent-written, edited, or safety-held replies remain pending. Providers without a posting API always stay pending until a human approves them.',
+              agentConsentVersion: '2026-07-24-v2',
+              publishingPolicy: {
+                agentCanPost: false,
+                eligibleUneditedStarReviewDraftMayAutoSchedule: true,
+                agentAuthoredRepliesRequireApproval: true,
+                editedRepliesRequireApproval: true,
+                safetyHeldRepliesRequireApproval: true,
+                unsupportedProvidersRequireManualPost: true,
+                unsupportedProvidersRemainPendingUntilHumanApproval: true,
+              },
+              pricing: { drafting: 'free' },
+              connect: {
+                publicTools: ['get_service_info', 'search_business', 'check_response_rate'],
+                oauth: { dynamicClientRegistration: true, pkceRequired: true },
+              },
+            });
 
     return {
       ok: true,
@@ -167,5 +195,92 @@ test('production canary rejects a location explicitly tagged for another busines
       fetchImpl: wrongBusinessFetch,
     }),
     (err) => err.code === 'canary_failed' && /outside business-synthetic/.test(err.message),
+  );
+});
+
+test('production canary rejects stale publishing-policy service info', async () => {
+  const original = fakeCanaryFetch();
+  const stalePolicyFetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.params?.name === 'get_service_info') {
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify(envelope({
+          service: 'StarReview',
+          what: 'Every reply waits for a human approval click.',
+          agentConsentVersion: '2026-07-24-v2',
+          publishingPolicy: {
+            agentCanPost: true,
+            eligibleUneditedStarReviewDraftMayAutoSchedule: false,
+            agentAuthoredRepliesRequireApproval: true,
+            editedRepliesRequireApproval: true,
+            safetyHeldRepliesRequireApproval: true,
+            unsupportedProvidersRequireManualPost: true,
+            unsupportedProvidersRemainPendingUntilHumanApproval: true,
+          },
+          pricing: { drafting: 'free' },
+          connect: {
+            publicTools: ['get_service_info', 'search_business', 'check_response_rate'],
+            oauth: { dynamicClientRegistration: true, pkceRequired: true },
+          },
+        })),
+      };
+    }
+    return original(url, init);
+  };
+
+  await assert.rejects(
+    runProductionCanary({
+      env: {
+        STARREVIEW_CANARY_API_KEY: 'sragt_synthetic_canary',
+        STARREVIEW_CANARY_BUSINESS_ID: 'business-synthetic',
+      },
+      fetchImpl: stalePolicyFetch,
+    }),
+    (err) => err.code === 'canary_failed' && /publishingPolicy\.agentCanPost/.test(err.message),
+  );
+});
+
+test('production canary rejects a stale submit variant schema', async () => {
+  const original = fakeCanaryFetch();
+  const staleSchemaFetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === 'tools/list' && !url.endsWith('/public')) {
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'application/json' },
+        text: async () => JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            tools: [
+              { name: 'list_locations' },
+              {
+                name: 'submit_reply_for_approval',
+                inputSchema: {
+                  type: 'object',
+                  properties: { variant: { type: 'integer' } },
+                },
+              },
+            ],
+          },
+        }),
+      };
+    }
+    return original(url, init);
+  };
+
+  await assert.rejects(
+    runProductionCanary({
+      env: {
+        STARREVIEW_CANARY_API_KEY: 'sragt_synthetic_canary',
+        STARREVIEW_CANARY_BUSINESS_ID: 'business-synthetic',
+      },
+      fetchImpl: staleSchemaFetch,
+    }),
+    (err) => err.code === 'canary_failed' && /variant\.minimum=1/.test(err.message),
   );
 });

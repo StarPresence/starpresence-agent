@@ -22,6 +22,29 @@ export const CANARY_CALLS = Object.freeze([
   'authenticated:list_locations',
 ]);
 
+const REQUIRED_PUBLIC_TOOLS = Object.freeze([
+  'get_service_info',
+  'search_business',
+  'check_response_rate',
+]);
+
+const REQUIRED_AUTHENTICATED_TOOLS = Object.freeze([
+  'list_locations',
+  'submit_reply_for_approval',
+]);
+
+const CURRENT_AGENT_CONSENT_VERSION = '2026-07-24-v2';
+
+const REQUIRED_PUBLISHING_POLICY = Object.freeze({
+  agentCanPost: false,
+  eligibleUneditedStarReviewDraftMayAutoSchedule: true,
+  agentAuthoredRepliesRequireApproval: true,
+  editedRepliesRequireApproval: true,
+  safetyHeldRepliesRequireApproval: true,
+  unsupportedProvidersRequireManualPost: true,
+  unsupportedProvidersRemainPendingUntilHumanApproval: true,
+});
+
 export const CANARY_HELP = `StarReview read-only production canary
 
 Required environment:
@@ -37,6 +60,56 @@ per-business credential correctly.`;
 
 function canaryError(message) {
   return new CliError('canary_failed', message);
+}
+
+function assertServiceInfo(payload) {
+  if (payload?.service !== 'StarReview') {
+    throw canaryError('get_service_info did not identify the StarReview service');
+  }
+  if (payload?.pricing?.drafting !== 'free') {
+    throw canaryError('get_service_info no longer reports drafting as free');
+  }
+  if (payload?.agentConsentVersion !== CURRENT_AGENT_CONSENT_VERSION) {
+    throw canaryError(
+      `get_service_info must report Agent Consent ${CURRENT_AGENT_CONSENT_VERSION}`,
+    );
+  }
+  for (const [fact, expected] of Object.entries(REQUIRED_PUBLISHING_POLICY)) {
+    if (payload?.publishingPolicy?.[fact] !== expected) {
+      throw canaryError(
+        `get_service_info publishingPolicy.${fact} must be ${expected}`,
+      );
+    }
+  }
+
+  const publicTools = payload?.connect?.publicTools;
+  for (const toolName of REQUIRED_PUBLIC_TOOLS) {
+    if (!Array.isArray(publicTools) || !publicTools.includes(toolName)) {
+      throw canaryError(`get_service_info is missing public tool ${toolName}`);
+    }
+  }
+  if (
+    payload?.connect?.oauth?.dynamicClientRegistration !== true
+    || payload?.connect?.oauth?.pkceRequired !== true
+  ) {
+    throw canaryError('get_service_info is missing the required OAuth DCR/PKCE facts');
+  }
+
+  const policy = payload?.what;
+  if (typeof policy !== 'string') {
+    throw canaryError('get_service_info is missing its publishing-policy summary');
+  }
+  const requiredFacts = [
+    [/can never post/i, 'agents can never post'],
+    [/eligible,\s*unedited StarReview draft may schedule under standing consent/i, 'eligible unedited drafts may schedule under standing consent'],
+    [/agent-written,\s*edited,\s*or safety-held replies remain pending/i, 'agent-written, edited, and safety-held replies remain pending'],
+    [/without a posting API[^.]*pending until a human approves/i, 'providers without a posting API remain pending until human approval'],
+  ];
+  for (const [pattern, label] of requiredFacts) {
+    if (!pattern.test(policy)) {
+      throw canaryError(`get_service_info is missing the canonical policy fact: ${label}`);
+    }
+  }
 }
 
 async function listTools({ endpoint, apiKey, isPublic, timeoutMs, fetchImpl }) {
@@ -82,6 +155,20 @@ function assertToolset(tools, requiredName, label) {
     throw canaryError(`${label} unexpectedly exposes direct posting tool ${directPostingTool}`);
   }
   return names;
+}
+
+function assertAuthenticatedContract(tools) {
+  for (const toolName of REQUIRED_AUTHENTICATED_TOOLS) {
+    if (!tools.some((tool) => tool?.name === toolName)) {
+      throw canaryError(`authenticated tools/list is missing ${toolName}`);
+    }
+  }
+  const submit = tools.find((tool) => tool?.name === 'submit_reply_for_approval');
+  if (submit?.inputSchema?.properties?.variant?.minimum !== 1) {
+    throw canaryError(
+      'authenticated submit_reply_for_approval must advertise variant.minimum=1',
+    );
+  }
 }
 
 function assertSyntheticLocations(payload, expectedBusinessId) {
@@ -137,13 +224,14 @@ export async function runProductionCanary({ env = process.env, fetchImpl = fetch
       : { STARREVIEW_TIMEOUT_MS: env.STARREVIEW_TIMEOUT_MS }),
   };
 
-  await callTool({
+  const serviceInfo = await callTool({
     name: 'get_service_info',
     args: {},
     isPublic: true,
     env: cliEnv,
     fetchImpl,
   });
+  assertServiceInfo(serviceInfo);
   const publicTools = await listTools({
     endpoint,
     apiKey,
@@ -167,6 +255,7 @@ export async function runProductionCanary({ env = process.env, fetchImpl = fetch
 
   const publicNames = assertToolset(publicTools, 'get_service_info', 'public');
   const authenticatedNames = assertToolset(authenticatedTools, 'list_locations', 'authenticated');
+  assertAuthenticatedContract(authenticatedTools);
   const locationCount = assertSyntheticLocations(locations, businessId);
   return {
     ok: true,

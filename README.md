@@ -70,7 +70,7 @@ The CLI deliberately pins its development contract to the exact MCP release. For
 
 1. Pack the MCP candidate in the backend repository. The backend candidate gate installs that local package into a CLI checkout and runs `npm run test:contract`; this does not require a registry release.
 2. Publish the verified `@starreview/mcp` version.
-3. Run ordinary CLI CI, the packed production canary, and then publish `@starreview/cli`.
+3. Run ordinary CLI CI, then dispatch the CLI publish workflow from the exact `main` ref. Its no-OIDC candidate job tests and production-canaries one tarball; the OIDC job verifies that artifact's digest and publishes that exact tarball without reinstalling dependencies or executing consumer code.
 
 Ordinary CLI CI is expected to fail with an npm `E404` before step 2; do not loosen the exact MCP pin to work around that ordering.
 
@@ -79,7 +79,9 @@ The protected `production-canary` GitHub environment must provide:
 - Secret `STARREVIEW_CANARY_PER_BUSINESS_API_KEY`: a legacy/admin-issued `sragt_` credential pinned to the dedicated synthetic business. Never use an account-wide self-service key. The workflow maps this secret to the canary runtime's `STARREVIEW_CANARY_API_KEY`.
 - Variable `STARREVIEW_CANARY_BUSINESS_ID`: the expected dedicated synthetic business ID.
 
-The canary scopes `list_locations` to that expected business and rejects picker, empty, inactive, malformed, or explicitly mismatched results. The API response cannot independently prove whether an `sragt_` credential is per-business or account-wide, so correct secret provisioning remains an operational requirement. Run `npm run canary:production -- --help` to display these requirements without making a request.
+Restrict that environment to the `main` branch and require a reviewer before releasing its secret. Both canary workflows also reject every ref except the exact `refs/heads/main` ref before a secret-bearing job starts.
+
+The canary scopes `list_locations` to that expected business and rejects picker, empty, inactive, malformed, or explicitly mismatched results. It also verifies the production publishing-policy summary and the current `submit_reply_for_approval` variant schema without invoking any write tool. The API response cannot independently prove whether an `sragt_` credential is per-business or account-wide, so correct secret provisioning remains an operational requirement. Run `npm run canary:production -- --help` to display these requirements without making a request.
 
 ## License
 
