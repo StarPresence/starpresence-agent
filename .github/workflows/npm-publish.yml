@@ -90,3 +90,47 @@ jobs:
       # trusted publishing; id-token: write above enables it).
       - name: Publish
         run: npm publish --access public --provenance
+
+      - name: Verify registry release
+        shell: bash
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          package_spec="${package_name}@${package_version}"
+
+          published_version=""
+          for attempt in {1..12}; do
+            published_version="$(npm view "$package_spec" version 2>/dev/null || true)"
+            if [[ "$published_version" == "$package_version" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$published_version" != "$package_version" ]]; then
+            echo "Registry did not expose $package_spec after publication." >&2
+            exit 1
+          fi
+
+          integrity="$(npm view "$package_spec" dist.integrity)"
+          if [[ "$integrity" != sha512-* ]]; then
+            echo "Registry metadata for $package_spec has no sha512 integrity." >&2
+            exit 1
+          fi
+
+          registry_tarball="$(npm pack "$package_spec" --silent)"
+          tar -tzf "$registry_tarball" > "$RUNNER_TEMP/starreview-registry-contents"
+          for required_path in \
+            package/package.json \
+            package/bin/starreview.js \
+            package/src/cli.js \
+            package/src/mcp.js \
+            package/scripts/production-canary.mjs \
+            package/SKILL.md \
+            package/README.md \
+            package/LICENSE
+          do
+            if ! grep -Fxq "$required_path" "$RUNNER_TEMP/starreview-registry-contents"; then
+              echo "Published tarball is missing $required_path." >&2
+              exit 1
+            fi
+          done
