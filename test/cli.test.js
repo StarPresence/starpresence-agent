@@ -6,7 +6,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { main } from '../src/cli.js';
-import { parseRpcBody, callTool, CliError } from '../src/mcp.js';
+import {
+  DEFAULT_TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
+  MIN_TIMEOUT_MS,
+  parseRpcBody,
+  callTool,
+  CliError,
+  resolveTimeoutMs,
+} from '../src/mcp.js';
 
 const ENV = { STARREVIEW_API_KEY: 'sragt_testkey' };
 
@@ -92,6 +100,38 @@ test('stats maps to get_review_stats with days as integer', async () => {
   assert.deepEqual(fetchImpl.calls[0].body.params, { name: 'get_review_stats', arguments: { days: 30 } });
 });
 
+test('numeric flags require complete, bounded positive integers', async () => {
+  const malformed = ['0', '1.5', '1day', '+1', '-1', ' 1', '1 ', '', '9007199254740992'];
+  const cases = [
+    ...malformed.map((value) => ['reviews', '--limit', value]),
+    ['reviews', '--limit', '51'],
+    ...malformed.map((value) => ['stats', '--days', value]),
+    ['stats', '--days', '3651'],
+    ...malformed.map((value) => ['submit', 'rev-1', '--variant', value]),
+  ];
+
+  for (const argv of cases) {
+    const fetchImpl = fakeFetch(() => ({ body: envelope({}) }));
+    const io = capture();
+    assert.equal(await main(argv, io, { env: ENV, fetchImpl }), 2, argv.join(' '));
+    assert.equal(fetchImpl.calls.length, 0, argv.join(' '));
+  }
+});
+
+test('numeric flags accept their inclusive boundaries', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: envelope({ ok: true }) }));
+  const io = capture();
+
+  assert.equal(await main(['reviews', '--limit', '1'], io, { env: ENV, fetchImpl }), 0);
+  assert.equal(await main(['reviews', '--limit', '50'], io, { env: ENV, fetchImpl }), 0);
+  assert.equal(await main(['stats', '--days', '1'], io, { env: ENV, fetchImpl }), 0);
+  assert.equal(await main(['stats', '--days', '3650'], io, { env: ENV, fetchImpl }), 0);
+  assert.equal(
+    await main(['submit', 'rev-1', '--variant', String(Number.MAX_SAFE_INTEGER)], io, { env: ENV, fetchImpl }),
+    0,
+  );
+});
+
 test('info and check use the credential-less public endpoint (no auth header)', async () => {
   const fetchImpl = fakeFetch((body) => {
     if (body.params.name === 'search_business') {
@@ -159,6 +199,110 @@ test('callTool: network failure maps to network_error', async () => {
     callTool({ name: 'get_service_info', isPublic: true, env: {}, fetchImpl: async () => { throw new Error('offline'); } }),
     (err) => err instanceof CliError && err.code === 'network_error',
   );
+});
+
+test('timeout configuration defaults to 120 seconds and enforces its exact range', () => {
+  assert.equal(resolveTimeoutMs({}), DEFAULT_TIMEOUT_MS);
+  assert.equal(resolveTimeoutMs({ STARREVIEW_TIMEOUT_MS: String(MIN_TIMEOUT_MS) }), MIN_TIMEOUT_MS);
+  assert.equal(resolveTimeoutMs({ STARREVIEW_TIMEOUT_MS: String(MAX_TIMEOUT_MS) }), MAX_TIMEOUT_MS);
+
+  for (const value of ['', '999', '600001', '1.5', '1000ms', ' 1000', '1000 ']) {
+    assert.throws(
+      () => resolveTimeoutMs({ STARREVIEW_TIMEOUT_MS: value }),
+      (err) => err instanceof CliError && err.code === 'invalid_configuration',
+      value,
+    );
+  }
+});
+
+test('invalid timeout configuration returns stable JSON without making a request', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: envelope({}) }));
+  const io = capture();
+  const code = await main(
+    ['info'],
+    io,
+    { env: { STARREVIEW_TIMEOUT_MS: 'later' }, fetchImpl },
+  );
+
+  assert.equal(code, 1);
+  assert.deepEqual(JSON.parse(io.outLines[0]), {
+    error: 'invalid_configuration',
+    message: 'STARREVIEW_TIMEOUT_MS must be an integer between 1000 and 600000',
+  });
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('timeout aborts a request that has not produced response headers', async () => {
+  let fireTimeout;
+  let sentSignal;
+  const fetchImpl = async (_url, init) => {
+    sentSignal = init.signal;
+    return new Promise(() => {});
+  };
+  const io = capture();
+  const result = main(
+    ['info'],
+    io,
+    {
+      env: { STARREVIEW_TIMEOUT_MS: '1000' },
+      fetchImpl,
+      setTimeoutImpl: (fn) => {
+        fireTimeout = fn;
+        return 1;
+      },
+      clearTimeoutImpl: () => {},
+    },
+  );
+
+  await Promise.resolve();
+  fireTimeout();
+  assert.equal(await result, 1);
+  assert.equal(sentSignal.aborted, true);
+  assert.deepEqual(JSON.parse(io.outLines[0]), {
+    error: 'timeout',
+    message: 'request timed out after 1000 ms',
+  });
+});
+
+test('timeout also aborts response-body reading', async () => {
+  let fireTimeout;
+  let signal;
+  let markBodyStarted;
+  const bodyStarted = new Promise((resolve) => {
+    markBodyStarted = resolve;
+  });
+  const fetchImpl = async (_url, init) => {
+    signal = init.signal;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      text: () => {
+        markBodyStarted();
+        return new Promise(() => {});
+      },
+    };
+  };
+  const io = capture();
+  const result = main(
+    ['info'],
+    io,
+    {
+      env: { STARREVIEW_TIMEOUT_MS: '1000' },
+      fetchImpl,
+      setTimeoutImpl: (fn) => {
+        fireTimeout = fn;
+        return 1;
+      },
+      clearTimeoutImpl: () => {},
+    },
+  );
+
+  await bodyStarted;
+  fireTimeout();
+  assert.equal(await result, 1);
+  assert.equal(signal.aborted, true);
+  assert.equal(JSON.parse(io.outLines[0]).error, 'timeout');
 });
 
 test('unknown command prints usage and exits 2', async () => {

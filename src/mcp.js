@@ -11,6 +11,9 @@
  */
 
 export const DEFAULT_ENDPOINT = 'https://mcp.starreview.ch/';
+export const DEFAULT_TIMEOUT_MS = 120_000;
+export const MIN_TIMEOUT_MS = 1_000;
+export const MAX_TIMEOUT_MS = 600_000;
 
 export class CliError extends Error {
   constructor(code, message) {
@@ -26,6 +29,27 @@ export function resolveEndpoint(env = process.env) {
 
 export function resolveApiKey(env = process.env) {
   return env.STARREVIEW_API_KEY || null;
+}
+
+export function resolveTimeoutMs(env = process.env) {
+  const raw = env.STARREVIEW_TIMEOUT_MS;
+  if (raw === undefined) return DEFAULT_TIMEOUT_MS;
+
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new CliError(
+      'invalid_configuration',
+      `STARREVIEW_TIMEOUT_MS must be an integer between ${MIN_TIMEOUT_MS} and ${MAX_TIMEOUT_MS}`,
+    );
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < MIN_TIMEOUT_MS || value > MAX_TIMEOUT_MS) {
+    throw new CliError(
+      'invalid_configuration',
+      `STARREVIEW_TIMEOUT_MS must be an integer between ${MIN_TIMEOUT_MS} and ${MAX_TIMEOUT_MS}`,
+    );
+  }
+  return value;
 }
 
 /** Extract the JSON body from a plain-JSON or one-shot SSE response. */
@@ -62,8 +86,19 @@ export function parseRpcBody(contentType, rawText) {
  * @param {boolean} [params.isPublic] use the credential-less /public endpoint
  * @param {object} [params.env] environment (injectable for tests)
  * @param {typeof fetch} [params.fetchImpl] fetch (injectable for tests)
+ * @param {typeof setTimeout} [params.setTimeoutImpl] timer (injectable for tests)
+ * @param {typeof clearTimeout} [params.clearTimeoutImpl] timer cleanup (injectable for tests)
  */
-export async function callTool({ name, args = {}, isPublic = false, env = process.env, fetchImpl = fetch }) {
+export async function callTool({
+  name,
+  args = {},
+  isPublic = false,
+  env = process.env,
+  fetchImpl = fetch,
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout,
+}) {
+  const timeoutMs = resolveTimeoutMs(env);
   const endpoint = resolveEndpoint(env);
   const url = isPublic ? `${endpoint}public` : endpoint;
 
@@ -82,35 +117,55 @@ export async function callTool({ name, args = {}, isPublic = false, env = proces
     headers.authorization = `Bearer ${key}`;
   }
 
+  const controller = new AbortController();
+  let didTimeout = false;
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeoutImpl(() => {
+      didTimeout = true;
+      controller.abort();
+      reject(new CliError('timeout', `request timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
+  });
+  const raceTimeout = (promise) => Promise.race([promise, timeoutPromise]);
+
   let res;
+  let rawText;
   try {
-    res = await fetchImpl(url, {
+    res = await raceTimeout(fetchImpl(url, {
       method: 'POST',
       headers,
+      signal: controller.signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
         method: 'tools/call',
         params: { name, arguments: args },
       }),
-    });
+    }));
+
+    if (res.status === 401) {
+      throw new CliError(
+        'unauthorized',
+        'The server rejected the credential (revoked, expired, or wrong STARREVIEW_API_KEY). Create a fresh agent key in your StarReview settings.',
+      );
+    }
+    if (res.status === 403) {
+      throw new CliError('forbidden', 'Agent access is currently disabled by the operator.');
+    }
+    if (!res.ok) {
+      throw new CliError('http_error', `HTTP ${res.status} from ${url}`);
+    }
+
+    rawText = await raceTimeout(res.text());
   } catch (err) {
+    if (didTimeout) {
+      throw new CliError('timeout', `request timed out after ${timeoutMs} ms`);
+    }
+    if (err instanceof CliError) throw err;
     throw new CliError('network_error', `could not reach ${url}: ${err?.message || err}`);
-  }
-
-  const rawText = await res.text();
-
-  if (res.status === 401) {
-    throw new CliError(
-      'unauthorized',
-      'The server rejected the credential (revoked, expired, or wrong STARREVIEW_API_KEY). Create a fresh agent key in your StarReview settings.',
-    );
-  }
-  if (res.status === 403) {
-    throw new CliError('forbidden', 'Agent access is currently disabled by the operator.');
-  }
-  if (!res.ok) {
-    throw new CliError('http_error', `HTTP ${res.status} from ${url}`);
+  } finally {
+    if (timer !== undefined) clearTimeoutImpl(timer);
   }
 
   const rpc = parseRpcBody(res.headers.get('content-type'), rawText);

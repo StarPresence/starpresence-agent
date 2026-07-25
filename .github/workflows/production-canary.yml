@@ -1,0 +1,60 @@
+name: production-canary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-ref:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require the exact main branch ref
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Refusing to expose production-canary credentials to $GITHUB_REF." >&2
+            exit 1
+          fi
+
+  read-only-canary:
+    needs: release-ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production-canary
+    steps:
+      # actions/checkout v4.3.1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      # actions/setup-node v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install exact contract and test dependencies
+        run: npm install --ignore-scripts
+
+      - name: Test
+        run: npm test
+
+      - name: Pack candidate
+        shell: bash
+        run: npm pack --silent > "$RUNNER_TEMP/starreview-package-name"
+
+      - name: Exercise packed candidate (read-only)
+        shell: bash
+        env:
+          STARREVIEW_CANARY_API_KEY: ${{ secrets.STARREVIEW_CANARY_PER_BUSINESS_API_KEY }}
+          STARREVIEW_CANARY_BUSINESS_ID: ${{ vars.STARREVIEW_CANARY_BUSINESS_ID }}
+          STARREVIEW_TIMEOUT_MS: '30000'
+        run: |
+          package_name="$(cat "$RUNNER_TEMP/starreview-package-name")"
+          candidate_dir="$RUNNER_TEMP/starreview-cli-candidate"
+          mkdir -p "$candidate_dir"
+          tar -xzf "$package_name" -C "$candidate_dir"
+          node "$candidate_dir/package/bin/starreview.js" --help > "$RUNNER_TEMP/starreview-help.txt" 2>&1
+          node "$candidate_dir/package/scripts/production-canary.mjs"
