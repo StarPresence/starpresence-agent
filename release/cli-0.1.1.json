@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": "@starreview/cli",
   "version": "0.1.1",
-  "sha256": "8b97900124759f2ab1f70c56ebcdda4ed77a0cd1babff90513205414491d0312",
+  "sha256": "6b73f4ce27e2c72617db08a33f3e01cf8f4ce9d903717ddc92ea1055fd55ffba",
   "contents": [
     "package/LICENSE",
     "package/README.md",
@@ -18,12 +18,15 @@
     "node": "24.18.0",
     "npm": "11.16.0"
   },
-  "sourceCommit": "2317d5d95dccf29ba1e616fb98742a91879e76f4",
+  "sourceCommit": "db90b94d3c3d997210a2e07915a4d317b1a0f4b0",
   "productionCanary": {
-    "status": "pending",
+    "status": "passed",
     "businessId": "2f4117c8-91a3-4735-87b1-9f84042765ab",
-    "artifactSha256": "8b97900124759f2ab1f70c56ebcdda4ed77a0cd1babff90513205414491d0312",
-    "verifiedAt": null,
-    "credentialRevokedAt": null
+    "artifactSha256": "6b73f4ce27e2c72617db08a33f3e01cf8f4ce9d903717ddc92ea1055fd55ffba",
+    "verifiedAt": "2026-07-28T04:30:54.718Z",
+    "credentialRevokedAt": "2026-07-28T04:30:51.133+00:00",
+    "tokenId": "b67f4451-4758-4808-9516-69c33f73ad6e",
+    "actionLogId": "9072c1cc-950c-4ab6-a37e-1dbecb5cf710",
+    "revokedBearerHttpStatus": 401
   }
 }
