@@ -1,0 +1,324 @@
+# Trusted publication for @starreview/cli from CircleCI.
+#
+# Candidate tests and packs once. Publish is the only job with the protected
+# npm context; it has no checkout or dependencies and receives only the tested
+# tarball. Registry verification has neither checkout nor publishing context.
+# npm provenance is omitted because npm does not support CircleCI provenance.
+
+version: 2.1
+
+executors:
+  release_node:
+    docker:
+      - image: cimg/node:24.18.0
+    resource_class: small
+
+jobs:
+  compatibility:
+    parameters:
+      node_version:
+        type: string
+    docker:
+      - image: cimg/node:<< parameters.node_version >>
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Install without lifecycle scripts
+          command: npm install --ignore-scripts --no-audit --no-fund
+      - run:
+          name: Test CLI and exact MCP contract
+          command: npm test
+      - run:
+          name: Inspect package payload
+          command: npm run pack:check
+
+  candidate:
+    executor: release_node
+    environment:
+      PIPELINE_REPO_URL: << pipeline.git.repo_url >>
+      PIPELINE_CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      PIPELINE_CONFIG_REF: << pipeline.config.ref >>
+      PIPELINE_CONFIG_SHA: << pipeline.config.sha >>
+      PIPELINE_GIT_BRANCH: << pipeline.git.branch >>
+      PIPELINE_GIT_REVISION: << pipeline.git.revision >>
+      PIPELINE_EVENT_NAME: << pipeline.event.name >>
+    steps:
+      - checkout
+      - run:
+          name: Guard exact GitHub App main-push identity
+          command: |
+            set -euo pipefail
+            [[ "$PIPELINE_REPO_URL" == "https://github.com/Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REPOSITORY" == "Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REF" == "refs/heads/main" ]] || exit 1
+            [[ "$PIPELINE_GIT_BRANCH" == "main" ]] || exit 1
+            [[ "$PIPELINE_EVENT_NAME" == "push" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            [[ "$PIPELINE_GIT_REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            [[ "$PIPELINE_CONFIG_SHA" == "$PIPELINE_GIT_REVISION" ]] || exit 1
+            [[ "$(git rev-parse HEAD)" == "$PIPELINE_GIT_REVISION" ]] || exit 1
+            origin_url="$(git remote get-url origin)"
+            [[ "$origin_url" =~ github\.com[:/]Fabsbags/starreview-agent(\.git)?$ ]] || exit 1
+            git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+            [[ "$(git rev-parse refs/remotes/origin/main)" == "$PIPELINE_GIT_REVISION" ]] || exit 1
+
+      - run:
+          name: Verify passed canary and release policy
+          command: |
+            set -euo pipefail
+            node - <<'NODE'
+            const fs = require('node:fs');
+            const pkg = require('./package.json');
+            const manifest = JSON.parse(
+              fs.readFileSync(`release/cli-${pkg.version}.json`, 'utf8'),
+            );
+            const contents = [
+              'package/LICENSE',
+              'package/README.md',
+              'package/SKILL.md',
+              'package/bin/starreview.js',
+              'package/package.json',
+              'package/scripts/production-canary.mjs',
+              'package/src/cli.js',
+              'package/src/mcp.js',
+            ];
+            if (pkg.name !== '@starreview/cli'
+                || manifest.package !== pkg.name
+                || manifest.version !== pkg.version
+                || manifest.schemaVersion !== 1) {
+              throw new Error('release manifest identity is invalid');
+            }
+            if (!/^[0-9a-f]{64}$/.test(manifest.sha256)) {
+              throw new Error('release digest is invalid');
+            }
+            if (manifest.productionCanary?.status !== 'passed'
+                || manifest.productionCanary?.artifactSha256 !== manifest.sha256
+                || !manifest.productionCanary?.verifiedAt
+                || !manifest.productionCanary?.credentialRevokedAt) {
+              throw new Error('exact-artifact production canary evidence is incomplete');
+            }
+            if (JSON.stringify(manifest.contents) !== JSON.stringify(contents)) {
+              throw new Error('release payload allowlist is invalid');
+            }
+            if (manifest.packedWith?.os !== 'linux'
+                || manifest.packedWith?.node !== '24.18.0'
+                || manifest.packedWith?.npm !== '11.16.0') {
+              throw new Error('canonical pack toolchain is invalid');
+            }
+            if (pkg.devDependencies?.['@starreview/mcp'] !== '0.6.1') {
+              throw new Error('exact @starreview/mcp 0.6.1 pin is required');
+            }
+            if (pkg.repository?.url !== 'git+https://github.com/Fabsbags/starreview-agent.git') {
+              throw new Error('trusted-publisher repository mismatch');
+            }
+            NODE
+            npm install --ignore-scripts --no-audit --no-fund
+            npm test
+            npm run pack:check
+
+      - run:
+          name: Pack once and require canonical Linux digest
+          command: |
+            set -euo pipefail
+            release_dir="/tmp/release-workspace/candidate"
+            mkdir -p "$release_dir"
+            version="$(node -p "require('./package.json').version")"
+            expected_sha="$(node -p "require('./release/cli-$version.json').sha256")"
+            filename="$(npm pack --silent --ignore-scripts --pack-destination "$release_dir")"
+            [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+            mv "$release_dir/$filename" "$release_dir/package.tgz"
+            actual_sha="$(sha256sum "$release_dir/package.tgz" | awk '{print $1}')"
+            [[ "$actual_sha" == "$expected_sha" ]] || {
+              echo "Candidate differs from the canonical canaried Linux artifact."
+              exit 1
+            }
+            node -p "require('./release/cli-$version.json').contents.join('\n')" \
+              | LC_ALL=C sort > /tmp/expected-contents.txt
+            tar -tzf "$release_dir/package.tgz" | sed '/\/$/d' | LC_ALL=C sort -u \
+              > /tmp/actual-contents.txt
+            diff --unified /tmp/expected-contents.txt /tmp/actual-contents.txt
+            printf '%s\n' "$version" > "$release_dir/version.txt"
+            printf '%s\n' "$PIPELINE_GIT_REVISION" > "$release_dir/source-sha.txt"
+            printf '%s  package.tgz\n' "$actual_sha" > "$release_dir/package.tgz.sha256"
+
+      - run:
+          name: Decide publish or verified no-op
+          command: |
+            set -euo pipefail
+            release_dir="/tmp/release-workspace/candidate"
+            version="$(cat "$release_dir/version.txt")"
+            expected_sha="$(awk '{print $1}' "$release_dir/package.tgz.sha256")"
+            spec="@starreview/cli@$version"
+            error_file="/tmp/npm-view-error.log"
+            if published="$(npm view "$spec" version --registry=https://registry.npmjs.org/ 2>"$error_file")"; then
+              [[ "$published" == "$version" ]] || exit 1
+              mkdir -p /tmp/existing
+              filename="$(npm pack "$spec" --silent --ignore-scripts --pack-destination /tmp/existing --registry=https://registry.npmjs.org/)"
+              [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+              actual_sha="$(sha256sum "/tmp/existing/$filename" | awk '{print $1}')"
+              [[ "$actual_sha" == "$expected_sha" ]] || {
+                echo "Version exists with different bytes; bump the version."
+                exit 1
+              }
+              decision="skip"
+            else
+              grep -q 'E404' "$error_file" || { cat "$error_file"; exit 1; }
+              decision="publish"
+            fi
+            printf '%s\n' "$decision" > "$release_dir/decision.txt"
+            chmod 0444 "$release_dir"/*
+
+      - persist_to_workspace:
+          root: /tmp/release-workspace
+          paths:
+            - candidate
+
+  publish:
+    executor: release_node
+    environment:
+      PIPELINE_REPO_URL: << pipeline.git.repo_url >>
+      PIPELINE_CONFIG_REPOSITORY: << pipeline.config.repository.name >>
+      PIPELINE_CONFIG_REF: << pipeline.config.ref >>
+      PIPELINE_CONFIG_SHA: << pipeline.config.sha >>
+      PIPELINE_GIT_BRANCH: << pipeline.git.branch >>
+      PIPELINE_GIT_REVISION: << pipeline.git.revision >>
+      PIPELINE_EVENT_NAME: << pipeline.event.name >>
+    steps:
+      # Deliberately no checkout, install, test, repacking, or source execution.
+      - attach_workspace:
+          at: /tmp/release-workspace
+      - run:
+          name: Verify exact artifact and current protected main
+          command: |
+            set -euo pipefail
+            release_dir="/tmp/release-workspace/candidate"
+            printf '%s\n' decision.txt package.tgz package.tgz.sha256 source-sha.txt version.txt \
+              | LC_ALL=C sort > /tmp/expected-files.txt
+            find "$release_dir" -mindepth 1 -maxdepth 1 -printf '%f\n' \
+              | LC_ALL=C sort > /tmp/actual-files.txt
+            diff --unified /tmp/expected-files.txt /tmp/actual-files.txt
+            for file in decision.txt package.tgz package.tgz.sha256 source-sha.txt version.txt; do
+              [[ -f "$release_dir/$file" && ! -L "$release_dir/$file" ]] || exit 1
+            done
+            (cd "$release_dir" && sha256sum --check package.tgz.sha256)
+            decision="$(cat "$release_dir/decision.txt")"
+            source_sha="$(cat "$release_dir/source-sha.txt")"
+            [[ "$decision" == "publish" || "$decision" == "skip" ]] || exit 1
+            [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            [[ "$PIPELINE_REPO_URL" == "https://github.com/Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REPOSITORY" == "Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REF" == "refs/heads/main" ]] || exit 1
+            [[ "$PIPELINE_GIT_BRANCH" == "main" && "$PIPELINE_EVENT_NAME" == "push" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_SHA" == "$PIPELINE_GIT_REVISION" ]] || exit 1
+            [[ "$source_sha" == "$PIPELINE_GIT_REVISION" ]] || exit 1
+            remote_main="$(git ls-remote https://github.com/Fabsbags/starreview-agent.git refs/heads/main)"
+            [[ "$remote_main" == "$source_sha"$'\trefs/heads/main' ]] || {
+              echo "Refusing stale candidate."
+              exit 1
+            }
+            [[ -z "${NPM_TOKEN:-}" && -z "${NODE_AUTH_TOKEN:-}" && ! -f "$HOME/.npmrc" ]] || {
+              echo "Long-lived npm configuration must not exist."
+              exit 1
+            }
+            node - <<'NODE'
+            const [major, minor] = process.versions.node.split('.').map(Number);
+            if (major < 22 || (major === 22 && minor < 14)) {
+              throw new Error('Node.js >=22.14 required');
+            }
+            const { execFileSync } = require('node:child_process');
+            const [a, b, c] = execFileSync('npm', ['--version'], { encoding: 'utf8' })
+              .trim().split('.').map(Number);
+            if (a < 11 || (a === 11 && b < 5) || (a === 11 && b === 5 && c < 1)) {
+              throw new Error('npm >=11.5.1 required');
+            }
+            NODE
+
+      - run:
+          name: Publish exact tarball with short-lived OIDC
+          command: |
+            set -euo pipefail
+            release_dir="/tmp/release-workspace/candidate"
+            decision="$(cat "$release_dir/decision.txt")"
+            version="$(cat "$release_dir/version.txt")"
+            if [[ "$decision" == "skip" ]]; then
+              echo "Exact $version bytes already exist; no OIDC token requested."
+              exit 0
+            fi
+            spec="@starreview/cli@$version"
+            error_file="/tmp/npm-view-error.log"
+            if npm view "$spec" version --registry=https://registry.npmjs.org/ 2>"$error_file"; then
+              echo "Refusing to overwrite an existing registry version."
+              exit 1
+            fi
+            grep -q 'E404' "$error_file" || { cat "$error_file"; exit 1; }
+            oidc_token="$(circleci run oidc get --claims '{"aud":"npm:registry.npmjs.org"}')"
+            [[ -n "$oidc_token" ]] || exit 1
+            NPM_ID_TOKEN="$oidc_token" npm publish "$release_dir/package.tgz" \
+              --access public --ignore-scripts --registry=https://registry.npmjs.org/
+            unset oidc_token
+
+  verify_registry:
+    executor: release_node
+    steps:
+      - attach_workspace:
+          at: /tmp/release-workspace
+      - run:
+          name: Verify registry bytes and payload
+          command: |
+            set -euo pipefail
+            release_dir="/tmp/release-workspace/candidate"
+            version="$(cat "$release_dir/version.txt")"
+            expected_sha="$(awk '{print $1}' "$release_dir/package.tgz.sha256")"
+            (cd "$release_dir" && sha256sum --check package.tgz.sha256)
+            spec="@starreview/cli@$version"
+            for attempt in {1..12}; do
+              published="$(npm view "$spec" version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+              [[ "$published" == "$version" ]] && break
+              [[ "$attempt" != 12 ]] || exit 1
+              sleep 5
+            done
+            mkdir -p /tmp/registry
+            for attempt in {1..6}; do
+              filename="$(npm pack "$spec" --silent --ignore-scripts --pack-destination /tmp/registry --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+              [[ -n "$filename" ]] && break
+              [[ "$attempt" != 6 ]] || exit 1
+              sleep 5
+            done
+            [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+            actual_sha="$(sha256sum "/tmp/registry/$filename" | awk '{print $1}')"
+            [[ "$actual_sha" == "$expected_sha" ]] || exit 1
+            printf '%s\n' \
+              package/LICENSE package/README.md package/SKILL.md \
+              package/bin/starreview.js package/package.json \
+              package/scripts/production-canary.mjs package/src/cli.js package/src/mcp.js \
+              | LC_ALL=C sort > /tmp/expected-contents.txt
+            tar -tzf "/tmp/registry/$filename" | sed '/\/$/d' | LC_ALL=C sort -u \
+              > /tmp/actual-contents.txt
+            diff --unified /tmp/expected-contents.txt /tmp/actual-contents.txt
+
+workflows:
+  cli_release:
+    jobs:
+      - compatibility:
+          matrix:
+            parameters:
+              node_version:
+                - "18.17.0"
+                - "20.19.4"
+                - "22.17.1"
+      - candidate:
+          requires:
+            - compatibility
+          filters: pipeline.git.branch == "main" and pipeline.config.ref == "refs/heads/main" and pipeline.event.name == "push"
+      - publish:
+          context:
+            - npm-trusted-publishing
+          requires:
+            - candidate
+          serial-group: starreview-cli/npm-publish
+          filters: pipeline.git.branch == "main" and pipeline.config.ref == "refs/heads/main" and pipeline.event.name == "push"
+      - verify_registry:
+          requires:
+            - publish
+          filters: pipeline.git.branch == "main" and pipeline.config.ref == "refs/heads/main" and pipeline.event.name == "push"

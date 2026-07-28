@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "package": "@starreview/cli",
+  "version": "0.1.1",
+  "sha256": "8b97900124759f2ab1f70c56ebcdda4ed77a0cd1babff90513205414491d0312",
+  "contents": [
+    "package/LICENSE",
+    "package/README.md",
+    "package/SKILL.md",
+    "package/bin/starreview.js",
+    "package/package.json",
+    "package/scripts/production-canary.mjs",
+    "package/src/cli.js",
+    "package/src/mcp.js"
+  ],
+  "packedWith": {
+    "os": "linux",
+    "node": "24.18.0",
+    "npm": "11.16.0"
+  },
+  "sourceCommit": "2317d5d95dccf29ba1e616fb98742a91879e76f4",
+  "productionCanary": {
+    "status": "pending",
+    "businessId": "2f4117c8-91a3-4735-87b1-9f84042765ab",
+    "artifactSha256": "8b97900124759f2ab1f70c56ebcdda4ed77a0cd1babff90513205414491d0312",
+    "verifiedAt": null,
+    "credentialRevokedAt": null
+  }
+}
