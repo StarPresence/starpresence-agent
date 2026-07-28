@@ -2,20 +2,16 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const publishWorkflow = readFileSync(
-  new URL('../.github/workflows/npm-publish.yml', import.meta.url),
+const workflow = readFileSync(
+  new URL('../.circleci/config.yml', import.meta.url),
   'utf8',
 ).replace(/\r\n/g, '\n');
-const canaryWorkflow = readFileSync(
-  new URL('../.github/workflows/production-canary.yml', import.meta.url),
+const manifest = JSON.parse(readFileSync(
+  new URL('../release/cli-0.1.1.json', import.meta.url),
   'utf8',
-).replace(/\r\n/g, '\n');
-const ciWorkflow = readFileSync(
-  new URL('../.github/workflows/ci.yml', import.meta.url),
-  'utf8',
-).replace(/\r\n/g, '\n');
+));
 
-function jobBlock(workflow, name, nextName = null) {
+function jobBlock(name, nextName = null) {
   const startMarker = `\n  ${name}:\n`;
   const start = workflow.indexOf(startMarker);
   assert.notEqual(start, -1, `workflow is missing ${name}`);
@@ -25,66 +21,82 @@ function jobBlock(workflow, name, nextName = null) {
   return workflow.slice(start, end);
 }
 
-test('secret-bearing canary jobs depend on an exact main-ref guard', () => {
-  for (const workflow of [publishWorkflow, canaryWorkflow]) {
-    const guard = jobBlock(
-      workflow,
-      'release-ref',
-      workflow === publishWorkflow ? 'candidate' : 'read-only-canary',
-    );
-    assert.match(guard, /GITHUB_REF[^]*refs\/heads\/main/);
+test('every pipeline runs the supported compatibility matrix', () => {
+  const compatibility = jobBlock('compatibility', 'candidate');
+  assert.match(compatibility, /npm install --ignore-scripts/);
+  assert.match(compatibility, /npm test/);
+  assert.match(compatibility, /npm run pack:check/);
+  for (const version of ['18.17.0', '20.19.4', '22.17.1']) {
+    assert.match(workflow, new RegExp(`"${version.replaceAll('.', '\\.')}"`));
   }
-
-  const publishCandidate = jobBlock(publishWorkflow, 'candidate', 'publish');
-  assert.match(publishCandidate, /needs:\s*release-ref/);
-  assert.match(publishCandidate, /environment:\s*production-canary/);
-
-  const standaloneCanary = jobBlock(canaryWorkflow, 'read-only-canary');
-  assert.match(standaloneCanary, /needs:\s*release-ref/);
-  assert.match(standaloneCanary, /environment:\s*production-canary/);
 });
 
-test('OIDC only promotes the exact tested candidate artifact', () => {
-  const candidate = jobBlock(publishWorkflow, 'candidate', 'publish');
-  const publish = jobBlock(publishWorkflow, 'publish', 'verify_registry');
-  const verifyRegistry = jobBlock(publishWorkflow, 'verify_registry');
+test('release jobs require an exact GitHub App main push', () => {
+  const candidate = jobBlock('candidate', 'publish');
+  const publish = jobBlock('publish', 'verify_registry');
+  for (const block of [candidate, publish]) {
+    assert.match(block, /Fabsbags\/starreview-agent/);
+    assert.match(block, /PIPELINE_CONFIG_REF/);
+    assert.match(block, /refs\/heads\/main/);
+    assert.match(block, /PIPELINE_EVENT_NAME/);
+    assert.match(block, /PIPELINE_CONFIG_SHA/);
+    assert.match(block, /PIPELINE_GIT_REVISION/);
+  }
 
-  assert.doesNotMatch(candidate, /id-token:\s*write/);
-  assert.match(candidate, /sha256sum/);
-  assert.match(candidate, /actions\/upload-artifact@[0-9a-f]{40}/);
-  assert.match(candidate, /production-canary\.mjs/);
+  const filter = 'filters: pipeline.git.branch == "main" and pipeline.config.ref == "refs/heads/main" and pipeline.event.name == "push"';
+  assert.equal(workflow.split(filter).length - 1, 3);
+});
 
-  assert.match(publish, /id-token:\s*write/);
-  assert.match(publish, /actions\/download-artifact@[0-9a-f]{40}/);
+test('candidate requires passed canary evidence and canonical bytes', () => {
+  const candidate = jobBlock('candidate', 'publish');
+  assert.match(candidate, /productionCanary\?\.status !== 'passed'/);
+  assert.match(candidate, /credentialRevokedAt/);
+  assert.match(candidate, /artifactSha256 !== manifest\.sha256/);
+  assert.match(candidate, /npm test/);
+  assert.match(candidate, /npm pack --silent --ignore-scripts/);
+  assert.match(candidate, /Candidate differs from the canonical canaried Linux artifact/);
+  assert.match(candidate, /persist_to_workspace/);
+});
+
+test('only checkout-free publish job requests short-lived npm OIDC', () => {
+  const candidate = jobBlock('candidate', 'publish');
+  const publish = jobBlock('publish', 'verify_registry');
+  const verifyRegistry = jobBlock('verify_registry');
+
   assert.match(publish, /sha256sum --check/);
-  assert.match(
-    publish,
-    /npm publish "\$STARREVIEW_CANDIDATE_TARBALL" --access public --provenance --ignore-scripts/,
-  );
-  assert.match(publish, /Node[^]*22\.14\.0/);
-  assert.match(publish, /npm[^]*11\.5\.1/);
+  assert.match(publish, /circleci run oidc get/);
+  assert.match(publish, /NPM_ID_TOKEN="\$oidc_token" npm publish/);
+  assert.match(publish, /NPM_TOKEN/);
+  assert.match(publish, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(publish, /\bnpm (?:install|ci|test|run)\b/);
-  assert.doesNotMatch(publish, /\bnpm (?:view|pack)\b/);
-  assert.doesNotMatch(publish, /actions\/checkout/);
+  assert.doesNotMatch(publish, /\bnpm pack\b/);
+  assert.doesNotMatch(publish, /(?:^|\n)\s+- checkout(?:\n|$)/);
+  assert.doesNotMatch(publish, /--provenance/);
 
-  assert.match(verifyRegistry, /needs:[^]*candidate[^]*publish/);
-  assert.doesNotMatch(verifyRegistry, /id-token:\s*write/);
-  assert.match(verifyRegistry, /npm view "\$package_spec" version/);
-  assert.match(verifyRegistry, /npm pack "\$package_spec"/);
-  assert.match(verifyRegistry, /registry_sha256/);
+  assert.doesNotMatch(candidate, /circleci run oidc get/);
+  assert.doesNotMatch(verifyRegistry, /circleci run oidc get/);
+  assert.equal(workflow.split('npm-trusted-publishing').length - 1, 1);
 });
 
-test('all GitHub Actions are pinned to immutable commit SHAs', () => {
-  for (const [name, workflow] of [
-    ['ci', ciWorkflow],
-    ['npm-publish', publishWorkflow],
-    ['production-canary', canaryWorkflow],
-  ]) {
-    const refs = [...workflow.matchAll(/^\s*-\s+uses:\s+\S+@(\S+)\s*$/gm)]
-      .map((match) => match[1]);
-    assert.ok(refs.length > 0, `${name} has no external actions`);
-    for (const ref of refs) {
-      assert.match(ref, /^[0-9a-f]{40}$/, `${name} uses mutable action ref ${ref}`);
-    }
-  }
+test('release manifest binds exact Linux artifact and payload', () => {
+  assert.equal(manifest.schemaVersion, 1);
+  assert.equal(manifest.package, '@starreview/cli');
+  assert.equal(manifest.version, '0.1.1');
+  assert.match(manifest.sha256, /^[0-9a-f]{64}$/);
+  assert.deepEqual(manifest.packedWith, {
+    os: 'linux',
+    node: '24.18.0',
+    npm: '11.16.0',
+  });
+  assert.equal(manifest.productionCanary.artifactSha256, manifest.sha256);
+  assert.deepEqual(manifest.contents, [
+    'package/LICENSE',
+    'package/README.md',
+    'package/SKILL.md',
+    'package/bin/starreview.js',
+    'package/package.json',
+    'package/scripts/production-canary.mjs',
+    'package/src/cli.js',
+    'package/src/mcp.js',
+  ]);
 });

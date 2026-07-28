@@ -68,20 +68,15 @@ This is a thin, MIT-licensed client over StarReview's hosted MCP endpoint (`http
 
 The CLI deliberately pins its development contract to the exact MCP release. For a coordinated MCP/CLI release:
 
-1. Pack the MCP candidate in the backend repository. The backend candidate gate installs that local package into a CLI checkout and runs `npm run test:contract`; this does not require a registry release.
-2. Publish the verified `@starreview/mcp` version.
-3. Run ordinary CLI CI, then dispatch the CLI publish workflow from the exact `main` ref. Its no-OIDC candidate job tests and production-canaries one tarball; the OIDC job verifies that artifact's digest and publishes that exact tarball without reinstalling dependencies or executing consumer code.
+1. Publish the exact MCP version pinned in `devDependencies`.
+2. On Linux with the reviewed Node/npm versions, pack the CLI once. Run that exact tarball's read-only production canary with a newly generated, business-pinned credential for the dedicated synthetic business. Revoke the credential immediately and record the artifact digest and revocation evidence in `release/cli-<version>.json`.
+3. Merge the version, passed manifest, and CircleCI configuration to protected `main`. The main-push pipeline automatically reruns tests, reproduces the canonical digest, publishes the exact tarball through short-lived npm OIDC, and verifies the registry bytes.
 
 Ordinary CLI CI is expected to fail with an npm `E404` before step 2; do not loosen the exact MCP pin to work around that ordering.
 
-The protected `production-canary` GitHub environment must provide:
-
-- Secret `STARREVIEW_CANARY_PER_BUSINESS_API_KEY`: a legacy/admin-issued `sragt_` credential pinned to the dedicated synthetic business. Never use an account-wide self-service key. The workflow maps this secret to the canary runtime's `STARREVIEW_CANARY_API_KEY`.
-- Variable `STARREVIEW_CANARY_BUSINESS_ID`: the expected dedicated synthetic business ID.
-
-Restrict that environment to the `main` branch and require a reviewer before releasing its secret. Both canary workflows also reject every ref except the exact `refs/heads/main` ref before a secret-bearing job starts.
-
 The canary scopes `list_locations` to that expected business and rejects picker, empty, inactive, malformed, or explicitly mismatched results. It also verifies the production publishing-policy summary and the current `submit_reply_for_approval` variant schema without invoking any write tool. The API response cannot independently prove whether an `sragt_` credential is per-business or account-wide, so correct secret provisioning remains an operational requirement. Run `npm run canary:production -- --help` to display these requirements without making a request.
+
+The canary credential and raw token exist only for the one local release process. They are never stored in GitHub or CircleCI. The CircleCI `npm-trusted-publishing` context contains no secrets, no manual approval is required, and the checkout-free publish job requests a short-lived npm token only when the version is still unpublished.
 
 ## License
 
