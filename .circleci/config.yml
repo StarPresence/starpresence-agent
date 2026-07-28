@@ -67,7 +67,7 @@ jobs:
           name: Verify passed canary and release policy
           command: |
             set -euo pipefail
-            node - <<'NODE'
+            node - \<<'NODE'
             const fs = require('node:fs');
             const pkg = require('./package.json');
             const manifest = JSON.parse(
@@ -221,7 +221,7 @@ jobs:
               echo "Long-lived npm configuration must not exist."
               exit 1
             }
-            node - <<'NODE'
+            node - \<<'NODE'
             const [major, minor] = process.versions.node.split('.').map(Number);
             if (major < 22 || (major === 22 && minor < 14)) {
               throw new Error('Node.js >=22.14 required');
