@@ -106,8 +106,8 @@ jobs:
                 || manifest.packedWith?.npm !== '11.16.0') {
               throw new Error('canonical pack toolchain is invalid');
             }
-            if (pkg.devDependencies?.['@starpresence/mcp'] !== '0.10.0') {
-              throw new Error('exact @starpresence/mcp 0.10.0 pin is required');
+            if (pkg.devDependencies?.['@starpresence/mcp'] !== '0.10.1') {
+              throw new Error('exact @starpresence/mcp 0.10.1 pin is required');
             }
             if (pkg.repository?.url !== 'git+https://github.com/StarPresence/starpresence-agent.git') {
               throw new Error('trusted-publisher repository mismatch');
