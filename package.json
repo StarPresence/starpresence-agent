@@ -1,5 +1,5 @@
 {
-  "name": "@starreview/cli",
+  "name": "@starpresence/cli",
   "version": "0.2.0",
   "description": "Social review management for AI agents: list reviews, draft and submit replies through StarReview's owner-controlled publishing policy. The CLI can never post.",
   "license": "MIT",
