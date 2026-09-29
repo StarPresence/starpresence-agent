@@ -60,7 +60,7 @@ test('reviews maps to list_unanswered_reviews with flags passed through', async 
   );
   assert.equal(code, 0);
   const call = fetchImpl.calls[0];
-  assert.equal(call.url, 'https://mcp.starreview.ch/');
+  assert.equal(call.url, 'https://mcp.starpresence.ai/');
   assert.equal(call.headers.authorization, 'Bearer sragt_testkey');
   assert.deepEqual(call.body.params, {
     name: 'list_unanswered_reviews',
@@ -142,7 +142,7 @@ test('info and check use the credential-less public endpoint (no auth header)', 
   const io = capture();
 
   assert.equal(await main(['info'], io, { env: {}, fetchImpl }), 0);
-  assert.equal(fetchImpl.calls[0].url, 'https://mcp.starreview.ch/public');
+  assert.equal(fetchImpl.calls[0].url, 'https://mcp.starpresence.ai/public');
   assert.equal(fetchImpl.calls[0].headers.authorization, undefined);
 
   // single candidate -> auto rate-check, combined payload

@@ -49,8 +49,8 @@ jobs:
           name: Guard exact GitHub App main-push identity
           command: |
             set -euo pipefail
-            [[ "$PIPELINE_REPO_URL" == "https://github.com/Fabsbags/starreview-agent" ]] || exit 1
-            [[ "$PIPELINE_CONFIG_REPOSITORY" == "Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_REPO_URL" == "https://github.com/StarPresence/starpresence-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REPOSITORY" == "StarPresence/starpresence-agent" ]] || exit 1
             [[ "$PIPELINE_CONFIG_REF" == "refs/heads/main" ]] || exit 1
             [[ "$PIPELINE_GIT_BRANCH" == "main" ]] || exit 1
             [[ "$PIPELINE_EVENT_NAME" == "push" ]] || exit 1
@@ -59,7 +59,7 @@ jobs:
             [[ "$PIPELINE_CONFIG_SHA" == "$PIPELINE_GIT_REVISION" ]] || exit 1
             [[ "$(git rev-parse HEAD)" == "$PIPELINE_GIT_REVISION" ]] || exit 1
             origin_url="$(git remote get-url origin)"
-            [[ "$origin_url" =~ github\.com[:/]Fabsbags/starreview-agent(\.git)?$ ]] || exit 1
+            [[ "$origin_url" =~ github\.com[:/]StarPresence/starpresence-agent(\.git)?$ ]] || exit 1
             git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
             [[ "$(git rev-parse refs/remotes/origin/main)" == "$PIPELINE_GIT_REVISION" ]] || exit 1
 
@@ -109,7 +109,7 @@ jobs:
             if (pkg.devDependencies?.['@starreview/mcp'] !== '0.6.1') {
               throw new Error('exact @starreview/mcp 0.6.1 pin is required');
             }
-            if (pkg.repository?.url !== 'git+https://github.com/Fabsbags/starreview-agent.git') {
+            if (pkg.repository?.url !== 'git+https://github.com/StarPresence/starpresence-agent.git') {
               throw new Error('trusted-publisher repository mismatch');
             }
             NODE
@@ -206,13 +206,13 @@ jobs:
             source_sha="$(cat "$release_dir/source-sha.txt")"
             [[ "$decision" == "publish" || "$decision" == "skip" ]] || exit 1
             [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
-            [[ "$PIPELINE_REPO_URL" == "https://github.com/Fabsbags/starreview-agent" ]] || exit 1
-            [[ "$PIPELINE_CONFIG_REPOSITORY" == "Fabsbags/starreview-agent" ]] || exit 1
+            [[ "$PIPELINE_REPO_URL" == "https://github.com/StarPresence/starpresence-agent" ]] || exit 1
+            [[ "$PIPELINE_CONFIG_REPOSITORY" == "StarPresence/starpresence-agent" ]] || exit 1
             [[ "$PIPELINE_CONFIG_REF" == "refs/heads/main" ]] || exit 1
             [[ "$PIPELINE_GIT_BRANCH" == "main" && "$PIPELINE_EVENT_NAME" == "push" ]] || exit 1
             [[ "$PIPELINE_CONFIG_SHA" == "$PIPELINE_GIT_REVISION" ]] || exit 1
             [[ "$source_sha" == "$PIPELINE_GIT_REVISION" ]] || exit 1
-            remote_main="$(git ls-remote https://github.com/Fabsbags/starreview-agent.git refs/heads/main)"
+            remote_main="$(git ls-remote https://github.com/StarPresence/starpresence-agent.git refs/heads/main)"
             [[ "$remote_main" == "$source_sha"$'\trefs/heads/main' ]] || {
               echo "Refusing stale candidate."
               exit 1

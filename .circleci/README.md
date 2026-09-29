@@ -1,7 +1,7 @@
 # CircleCI release boundary
 
 Every pipeline tests the CLI on the supported Node matrix. Only an exact
-GitHub App `push` pipeline for `Fabsbags/starreview-agent` `main` can release.
+GitHub App `push` pipeline for `StarPresence/starpresence-agent` `main` can release.
 
 The candidate must reproduce the immutable SHA-256 in
 `release/cli-<version>.json`, whose canary record must prove that those exact

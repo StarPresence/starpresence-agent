@@ -16,7 +16,7 @@ Requests time out after 120 seconds by default. Set `STARREVIEW_TIMEOUT_MS` to a
 Or as an agent skill:
 
 ```bash
-npx skills add Fabsbags/starreview-agent
+npx skills add StarPresence/starpresence-agent
 ```
 
 The owner creates the API key in their [StarReview settings](https://www.starreview.ch/) (Einstellungen → Agent-Zugang). One key covers all their businesses and can be revoked there at any time.
@@ -62,7 +62,7 @@ Here `autoScheduled: false` means the reply waits in the owner's StarReview appr
 
 ## What this repo is (and is not)
 
-This is a thin, MIT-licensed client over StarReview's hosted MCP endpoint (`https://mcp.starreview.ch/`). It contains no server code and no secrets; the only credential it ever touches is your own `STARREVIEW_API_KEY` environment variable. MCP-native clients (Claude, ChatGPT, Cursor) can skip the CLI and connect to the endpoint directly - see [starreview-mcp](https://github.com/Fabsbags/starreview-mcp) and [starreview.ch/agents](https://www.starreview.ch/agents/).
+This is a thin, MIT-licensed client over StarReview's hosted MCP endpoint (`https://mcp.starpresence.ai/`). It contains no server code and no secrets; the only credential it ever touches is your own `STARREVIEW_API_KEY` environment variable. MCP-native clients (Claude, ChatGPT, Cursor) can skip the CLI and connect to the endpoint directly - see [starpresence-mcp](https://github.com/StarPresence/starpresence-mcp) and [starpresence.ai/en/agents](https://starpresence.ai/en/agents).
 
 ## Coordinated release order (maintainers)
 

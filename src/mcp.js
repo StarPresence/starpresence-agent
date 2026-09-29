@@ -10,7 +10,7 @@
  * STARREVIEW_API_KEY, read from the environment and sent as a Bearer header.
  */
 
-export const DEFAULT_ENDPOINT = 'https://mcp.starreview.ch/';
+export const DEFAULT_ENDPOINT = 'https://mcp.starpresence.ai/';
 export const DEFAULT_TIMEOUT_MS = 120_000;
 export const MIN_TIMEOUT_MS = 1_000;
 export const MAX_TIMEOUT_MS = 600_000;
