@@ -47,9 +47,9 @@ function capture() {
 }
 
 test('the CLI pins and loads the coordinated MCP contract version', () => {
-  assert.equal(cliPackage.devDependencies['@starpresence/mcp'], '0.10.0');
-  assert.equal(mcpPackage.version, '0.10.0');
-  assert.equal(contract.serverVersion, '0.10.0');
+  assert.equal(cliPackage.devDependencies['@starpresence/mcp'], '0.10.1');
+  assert.equal(mcpPackage.version, '0.10.1');
+  assert.equal(contract.serverVersion, '0.10.1');
   assert.equal(contract.agentConsent.currentVersion, '2026-07-24-v2');
   assert.equal(contract.agentConsent.privacyDocumentKey, 'agent_mcp_privacy');
   assert.equal(contract.agentConsent.privacyCurrentVersion, '2026-07-24-v2');
