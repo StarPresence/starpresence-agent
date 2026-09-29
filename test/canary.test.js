@@ -22,7 +22,7 @@ function fakeCanaryFetch() {
           id: 1,
           result: {
             tools: url.endsWith('/public')
-              ? [{ name: 'get_service_info' }, { name: 'search_business' }]
+              ? [{ name: 'get_service_info' }]
               : [
                   { name: 'list_locations' },
                   { name: 'draft_reply' },
@@ -39,8 +39,8 @@ function fakeCanaryFetch() {
       : envelope(body.params.name === 'list_locations'
           ? [{ locationId: 'location-synthetic', name: 'Synthetic Canary', status: 'active' }]
           : {
-              service: 'StarReview',
-              what: 'Agents can draft and submit but can never post. On a live posting API, an eligible, unedited StarReview draft may schedule under standing consent, while agent-written, edited, or safety-held replies remain pending. Providers without a posting API always stay pending until a human approves them.',
+              service: 'StarPresence',
+              what: 'Agents can draft and submit but can never post. On a live posting API, an eligible, unedited StarPresence draft may schedule under standing consent, while agent-written, edited, or safety-held replies remain pending. Providers without a posting API always stay pending until a human approves them.',
               agentConsentVersion: '2026-07-24-v2',
               publishingPolicy: {
                 agentCanPost: false,
@@ -51,9 +51,9 @@ function fakeCanaryFetch() {
                 unsupportedProvidersRequireManualPost: true,
                 unsupportedProvidersRemainPendingUntilHumanApproval: true,
               },
-              pricing: { drafting: 'free' },
+              pricing: { model: 'subscription', chargedPerAction: false },
               connect: {
-                publicTools: ['get_service_info', 'search_business', 'check_response_rate'],
+                publicTools: ['get_service_info'],
                 oauth: { dynamicClientRegistration: true, pkceRequired: true },
               },
             });
@@ -208,7 +208,7 @@ test('production canary rejects stale publishing-policy service info', async () 
         status: 200,
         headers: { get: () => 'application/json' },
         text: async () => JSON.stringify(envelope({
-          service: 'StarReview',
+          service: 'StarPresence',
           what: 'Every reply waits for a human approval click.',
           agentConsentVersion: '2026-07-24-v2',
           publishingPolicy: {
@@ -220,9 +220,9 @@ test('production canary rejects stale publishing-policy service info', async () 
             unsupportedProvidersRequireManualPost: true,
             unsupportedProvidersRemainPendingUntilHumanApproval: true,
           },
-          pricing: { drafting: 'free' },
+          pricing: { model: 'subscription', chargedPerAction: false },
           connect: {
-            publicTools: ['get_service_info', 'search_business', 'check_response_rate'],
+            publicTools: ['get_service_info'],
             oauth: { dynamicClientRegistration: true, pkceRequired: true },
           },
         })),

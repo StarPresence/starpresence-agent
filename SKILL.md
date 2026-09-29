@@ -16,14 +16,14 @@ export STARREVIEW_API_KEY=sragt_...
 
 Requests time out after 120 seconds by default. `STARREVIEW_TIMEOUT_MS` may override that with a whole number from `1000` through `600000`.
 
-The owner creates the key in their StarReview settings (Einstellungen -> Agent-Zugang) at https://www.starreview.ch/. The key covers ALL businesses the owner manages. No key yet? The `info` and `check` commands work without one - use `check` to show the owner their current response rate before they sign up.
+The owner creates the key in their StarReview settings (Einstellungen -> Agent-Zugang) at https://www.starreview.ch/. The key covers ALL businesses the owner manages. No key yet? The `info` command works without one.
 
 Every command prints ONE JSON document to stdout. Success prints the payload; failure prints `{ "error": "<code>", "message": "..." }` with a non-zero exit. Parse stdout, branch on exit code.
 
 ## Workflow
 
 ```bash
-starreview stats --days 30            # optional: how are the reviews doing
+starreview stats                      # optional: the weekly recap headline stats
 starreview reviews --limit 10         # unanswered reviews, each with .provider
 starreview review <reviewId>          # full text, language, existing drafts
 starreview draft <reviewId>           # StarReview drafts variants (owner's voice)
@@ -67,8 +67,10 @@ Refusals (do NOT blind-retry): `forbidden`, `posting_paywall` (owner must subscr
 
 Failures/limits: `missing_api_key` / `unauthorized` (fix the key), `invalid_arguments`, `not_found`, `variant_not_found` (re-run `draft`), `rate_limited_per_minute` (back off >=60s), `daily_draft_cap_exceeded` (stop for the day), `db_error` / `internal_error` (retry with backoff), `network_error`, `timeout` (retry only when safe). `invalid_configuration` means `STARREVIEW_TIMEOUT_MS` must be fixed before retrying.
 
-Rate limits: 20 calls/min per key; drafting ~25/day per business. Public: 10 calls/min per IP, `check` results cached ~30 days - never repeat for the same place.
+Rate limits: 20 calls/min per key; drafting ~25/day per business. Public: 10 calls/min per IP (`info`).
 
 ## Compatibility promise
 
 Changes are additive-only: new commands, optional flags, response fields, and `provider` values may appear in any minor version; nothing existing is removed or changes meaning without a MAJOR version bump. An agent written against this document keeps working.
+
+**0.2.0 is the one break.** `check` is removed and `stats` reads the weekly recap (`--business` and `--provider` only; `--days` and `--location` are gone). The MCP server retired the tools behind both in its 0.7.0 (`search_business`, `check_response_rate`, `get_review_stats`), so those commands had already stopped working; 0.2.0 removes them instead of leaving them to fail.

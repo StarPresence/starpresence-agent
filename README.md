@@ -29,10 +29,9 @@ starreview review <reviewId>
 starreview draft <reviewId>
 starreview submit <reviewId> --variant <n> [--text <edited>] [--post-at <iso>]
 starreview submit <reviewId> --text <own reply> [--post-at <iso>]
-starreview stats [--days <n>] [--business <id>] [--location <id>]
+starreview stats [--business <id>] [--provider <slug>]   # weekly recap headline stats
 starreview locations [--business <id>]
 starreview info                      # no key needed
-starreview check "<business name>"   # no key needed - free response-rate check
 ```
 
 Every command prints one JSON document to stdout (agent-first output). Errors print `{ "error": "<code>", "message": "..." }` and exit non-zero. See [SKILL.md](./SKILL.md) for the full agent contract: multi-business picker, per-platform post-submit outcomes, error codes, rate limits, and the honesty rules.

@@ -28,13 +28,10 @@ Commands (authenticated):
   submit      <reviewId> --variant <n> [--text <s>] [--post-at <iso>]
                                                       submit a StarReview draft
   submit      <reviewId> --text <s> [--post-at <iso>] submit your OWN text (always pending)
-  stats       [--business <id>] [--location <id>] [--days <n>]
-                                                      read-only review KPIs
+  stats       [--business <id>] [--provider <slug>]   weekly recap headline stats
 
 Commands (no key needed):
   info                                                about StarReview + pricing
-  check       "<business name>" [--place <placeId>] [--lang de|fr|it|en]
-                                                      free response-rate check
 
 The CLI never posts to Google or any other platform. An eligible, unedited
 StarReview draft may be scheduled under the owner's standing consent and
@@ -144,16 +141,11 @@ async function cmdSubmit(argv, ctx) {
 async function cmdStats(argv, ctx) {
   const { values } = parse(argv, {
     ...SCOPE_OPTIONS,
-    location: { type: 'string' },
-    days: { type: 'string' },
+    provider: { type: 'string' },
   });
   return callTool({
-    name: 'get_review_stats',
-    args: prune({
-      businessId: values.business,
-      locationId: values.location,
-      days: intOrUsage(values.days, 'days', 3650),
-    }),
+    name: 'get_report_stats',
+    args: prune({ businessId: values.business, provider: values.provider }),
     ...ctx,
   });
 }
@@ -163,35 +155,6 @@ async function cmdInfo(argv, ctx) {
   return callTool({ name: 'get_service_info', args: {}, isPublic: true, ...ctx });
 }
 
-async function cmdCheck(argv, ctx) {
-  const { values, positionals } = parse(argv, {
-    lang: { type: 'string' },
-    place: { type: 'string' },
-  }, true);
-  const lang = values.lang;
-  if (lang && !['de', 'fr', 'it', 'en'].includes(lang)) throw usageError('--lang must be de|fr|it|en');
-
-  if (values.place) {
-    return callTool({ name: 'check_response_rate', args: prune({ placeId: values.place, lang }), isPublic: true, ...ctx });
-  }
-
-  const query = positionals.join(' ').trim();
-  if (query.length < 3) throw usageError('usage: starreview check "<business name>" [--place <placeId>] [--lang de]');
-
-  const found = await callTool({ name: 'search_business', args: prune({ query, lang }), isPublic: true, ...ctx });
-  const candidates = Array.isArray(found?.candidates) ? found.candidates : (Array.isArray(found) ? found : []);
-  if (candidates.length === 1 && candidates[0]?.placeId) {
-    const check = await callTool({ name: 'check_response_rate', args: prune({ placeId: candidates[0].placeId, lang }), isPublic: true, ...ctx });
-    return { candidate: candidates[0], check };
-  }
-  // Ambiguous (or empty): never guess which business the user meant.
-  return {
-    candidates,
-    hint: candidates.length
-      ? 'Multiple candidates. Re-run: starreview check --place <placeId>'
-      : 'No candidates found. Refine the query (add the city).',
-  };
-}
 
 const COMMANDS = {
   locations: cmdLocations,
@@ -201,7 +164,6 @@ const COMMANDS = {
   submit: cmdSubmit,
   stats: cmdStats,
   info: cmdInfo,
-  check: cmdCheck,
 };
 
 function prune(obj) {

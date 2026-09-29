@@ -24,8 +24,6 @@ export const CANARY_CALLS = Object.freeze([
 
 const REQUIRED_PUBLIC_TOOLS = Object.freeze([
   'get_service_info',
-  'search_business',
-  'check_response_rate',
 ]);
 
 const REQUIRED_AUTHENTICATED_TOOLS = Object.freeze([
@@ -63,11 +61,11 @@ function canaryError(message) {
 }
 
 function assertServiceInfo(payload) {
-  if (payload?.service !== 'StarReview') {
-    throw canaryError('get_service_info did not identify the StarReview service');
+  if (payload?.service !== 'StarPresence') {
+    throw canaryError('get_service_info did not identify the StarPresence service');
   }
-  if (payload?.pricing?.drafting !== 'free') {
-    throw canaryError('get_service_info no longer reports drafting as free');
+  if (payload?.pricing?.model !== 'subscription' || payload?.pricing?.chargedPerAction !== false) {
+    throw canaryError('get_service_info must report subscription pricing with nothing charged per action');
   }
   if (payload?.agentConsentVersion !== CURRENT_AGENT_CONSENT_VERSION) {
     throw canaryError(
@@ -101,7 +99,7 @@ function assertServiceInfo(payload) {
   }
   const requiredFacts = [
     [/can never post/i, 'agents can never post'],
-    [/eligible,\s*unedited StarReview draft may schedule under standing consent/i, 'eligible unedited drafts may schedule under standing consent'],
+    [/eligible,\s*unedited StarPresence draft may schedule under standing consent/i, 'eligible unedited drafts may schedule under standing consent'],
     [/agent-written,\s*edited,\s*or safety-held replies remain pending/i, 'agent-written, edited, and safety-held replies remain pending'],
     [/without a posting API[^.]*pending until a human approves/i, 'providers without a posting API remain pending until human approval'],
   ];
