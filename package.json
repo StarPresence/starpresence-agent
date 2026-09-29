@@ -1,6 +1,6 @@
 {
   "name": "@starreview/cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Social review management for AI agents: list reviews, draft and submit replies through StarReview's owner-controlled publishing policy. The CLI can never post.",
   "license": "MIT",
   "type": "module",
@@ -25,15 +25,15 @@
     "pack:check": "npm pack --dry-run"
   },
   "devDependencies": {
-    "@starreview/mcp": "0.6.1",
+    "@starpresence/mcp": "0.10.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Fabsbags/starreview-agent.git"
+    "url": "git+https://github.com/StarPresence/starpresence-agent.git"
   },
-  "homepage": "https://www.starreview.ch/agents/",
+  "homepage": "https://starpresence.ai/en/agents",
   "keywords": [
     "reviews",
     "google-business-profile",

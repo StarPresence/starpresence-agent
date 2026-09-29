@@ -1,5 +1,5 @@
 // Release compatibility gate: every request shape emitted by the CLI must
-// validate against the exact @starreview/mcp contract this package declares.
+// validate against the exact @starpresence/mcp contract this package declares.
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -11,8 +11,8 @@ import { main } from '../src/cli.js';
 
 const require = createRequire(import.meta.url);
 const cliPackage = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const mcpPackage = require('@starreview/mcp/package.json');
-const contract = require('@starreview/mcp/agent-contract.generated.json');
+const mcpPackage = require('@starpresence/mcp/package.json');
+const contract = require('@starpresence/mcp/agent-contract.generated.json');
 
 const ENV = { STARREVIEW_API_KEY: 'sragt_contract_test' };
 
@@ -30,10 +30,7 @@ function contractFetch() {
     const body = JSON.parse(init.body);
     calls.push({ url, body });
 
-    let payload = { ok: true };
-    if (body.params.name === 'search_business') {
-      payload = { candidates: [{ placeId: 'place-1' }, { placeId: 'place-2' }] };
-    }
+    const payload = { ok: true };
     return {
       ok: true,
       status: 200,
@@ -50,9 +47,9 @@ function capture() {
 }
 
 test('the CLI pins and loads the coordinated MCP contract version', () => {
-  assert.equal(cliPackage.devDependencies['@starreview/mcp'], '0.6.1');
-  assert.equal(mcpPackage.version, '0.6.1');
-  assert.equal(contract.serverVersion, '0.6.1');
+  assert.equal(cliPackage.devDependencies['@starpresence/mcp'], '0.10.0');
+  assert.equal(mcpPackage.version, '0.10.0');
+  assert.equal(contract.serverVersion, '0.10.0');
   assert.equal(contract.agentConsent.currentVersion, '2026-07-24-v2');
   assert.equal(contract.agentConsent.privacyDocumentKey, 'agent_mcp_privacy');
   assert.equal(contract.agentConsent.privacyCurrentVersion, '2026-07-24-v2');
@@ -81,15 +78,13 @@ test('every CLI request validates against its real MCP tool input schema', async
   const commands = [
     ['locations', '--business', 'business-1'],
     ['reviews', '--business', 'business-1', '--location', 'location-1', '--provider', 'google', '--limit', '50'],
-    ['stats', '--business', 'business-1', '--location', 'location-1', '--days', '3650'],
+    ['stats', '--business', 'business-1', '--provider', 'google'],
     ['review', 'review-1'],
     ['draft', 'review-1'],
     ['submit', 'review-1', '--variant', '1', '--post-at', '2026-07-25T10:00:00.000Z'],
     ['submit', 'review-1', '--variant', '2', '--text', 'Edited reply'],
     ['submit', 'review-1', '--text', 'Agent-authored reply'],
     ['info'],
-    ['check', '--place', 'place-1', '--lang', 'en'],
-    ['check', 'Restaurant', 'Adler', 'Zurich', '--lang', 'de'],
   ];
 
   for (const argv of commands) {

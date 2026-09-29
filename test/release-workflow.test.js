@@ -35,7 +35,7 @@ test('release jobs require an exact GitHub App main push', () => {
   const candidate = jobBlock('candidate', 'publish');
   const publish = jobBlock('publish', 'verify_registry');
   for (const block of [candidate, publish]) {
-    assert.match(block, /Fabsbags\/starreview-agent/);
+    assert.match(block, /StarPresence\/starpresence-agent/);
     assert.match(block, /PIPELINE_CONFIG_REF/);
     assert.match(block, /refs\/heads\/main/);
     assert.match(block, /PIPELINE_EVENT_NAME/);

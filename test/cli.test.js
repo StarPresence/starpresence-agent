@@ -60,7 +60,7 @@ test('reviews maps to list_unanswered_reviews with flags passed through', async 
   );
   assert.equal(code, 0);
   const call = fetchImpl.calls[0];
-  assert.equal(call.url, 'https://mcp.starreview.ch/');
+  assert.equal(call.url, 'https://mcp.starpresence.ai/');
   assert.equal(call.headers.authorization, 'Bearer sragt_testkey');
   assert.deepEqual(call.body.params, {
     name: 'list_unanswered_reviews',
@@ -93,11 +93,23 @@ test('submit without --variant or --text is a usage error (exit 2, nothing sent)
   assert.equal(fetchImpl.calls.length, 0);
 });
 
-test('stats maps to get_review_stats with days as integer', async () => {
-  const fetchImpl = fakeFetch(() => ({ body: envelope({ totalReviews: 10, byProvider: {} }) }));
+test('stats maps to get_report_stats with the business and provider only', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: envelope({ headline: {} }) }));
   const io = capture();
-  assert.equal(await main(['stats', '--days', '30'], io, { env: ENV, fetchImpl }), 0);
-  assert.deepEqual(fetchImpl.calls[0].body.params, { name: 'get_review_stats', arguments: { days: 30 } });
+  assert.equal(await main(['stats', '--business', 'b-1', '--provider', 'google'], io, { env: ENV, fetchImpl }), 0);
+  assert.deepEqual(fetchImpl.calls[0].body.params, {
+    name: 'get_report_stats',
+    arguments: { businessId: 'b-1', provider: 'google' },
+  });
+});
+
+test('stats no longer takes --days or --location: the tool behind them was retired', async () => {
+  for (const argv of [['stats', '--days', '30'], ['stats', '--location', 'loc-1']]) {
+    const fetchImpl = fakeFetch(() => ({ body: envelope({}) }));
+    const io = capture();
+    assert.equal(await main(argv, io, { env: ENV, fetchImpl }), 2, argv.join(' '));
+    assert.equal(fetchImpl.calls.length, 0, argv.join(' '));
+  }
 });
 
 test('numeric flags require complete, bounded positive integers', async () => {
@@ -105,8 +117,6 @@ test('numeric flags require complete, bounded positive integers', async () => {
   const cases = [
     ...malformed.map((value) => ['reviews', '--limit', value]),
     ['reviews', '--limit', '51'],
-    ...malformed.map((value) => ['stats', '--days', value]),
-    ['stats', '--days', '3651'],
     ...malformed.map((value) => ['submit', 'rev-1', '--variant', value]),
   ];
 
@@ -124,44 +134,26 @@ test('numeric flags accept their inclusive boundaries', async () => {
 
   assert.equal(await main(['reviews', '--limit', '1'], io, { env: ENV, fetchImpl }), 0);
   assert.equal(await main(['reviews', '--limit', '50'], io, { env: ENV, fetchImpl }), 0);
-  assert.equal(await main(['stats', '--days', '1'], io, { env: ENV, fetchImpl }), 0);
-  assert.equal(await main(['stats', '--days', '3650'], io, { env: ENV, fetchImpl }), 0);
   assert.equal(
     await main(['submit', 'rev-1', '--variant', String(Number.MAX_SAFE_INTEGER)], io, { env: ENV, fetchImpl }),
     0,
   );
 });
 
-test('info and check use the credential-less public endpoint (no auth header)', async () => {
-  const fetchImpl = fakeFetch((body) => {
-    if (body.params.name === 'search_business') {
-      return { body: envelope({ candidates: [{ placeId: 'p1', name: 'Adler' }] }) };
-    }
-    return { body: envelope({ responseRatePct: 8 }) };
-  });
+test('info uses the credential-less public endpoint (no auth header)', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: envelope({ service: 'StarPresence' }) }));
   const io = capture();
 
   assert.equal(await main(['info'], io, { env: {}, fetchImpl }), 0);
-  assert.equal(fetchImpl.calls[0].url, 'https://mcp.starreview.ch/public');
+  assert.equal(fetchImpl.calls[0].url, 'https://mcp.starpresence.ai/public');
   assert.equal(fetchImpl.calls[0].headers.authorization, undefined);
-
-  // single candidate -> auto rate-check, combined payload
-  assert.equal(await main(['check', 'Restaurant Adler Zuerich'], io, { env: {}, fetchImpl }), 0);
-  const combined = JSON.parse(io.outLines.at(-1));
-  assert.equal(combined.candidate.placeId, 'p1');
-  assert.equal(combined.check.responseRatePct, 8);
 });
 
-test('check with multiple candidates returns them + a hint, never guesses', async () => {
-  const fetchImpl = fakeFetch(() => ({
-    body: envelope({ candidates: [{ placeId: 'p1' }, { placeId: 'p2' }] }),
-  }));
+test('check is no longer a command: its tools were retired, so it is a usage error and sends nothing', async () => {
+  const fetchImpl = fakeFetch(() => ({ body: envelope({}) }));
   const io = capture();
-  assert.equal(await main(['check', 'Cafe Central'], io, { env: {}, fetchImpl }), 0);
-  const out = JSON.parse(io.outLines[0]);
-  assert.equal(out.candidates.length, 2);
-  assert.match(out.hint, /--place/);
-  assert.equal(fetchImpl.calls.length, 1); // no second (rate-check) call
+  assert.equal(await main(['check', 'Restaurant Adler Zuerich'], io, { env: {}, fetchImpl }), 2);
+  assert.equal(fetchImpl.calls.length, 0);
 });
 
 test('missing API key on an authenticated command: JSON error, exit 1, no request', async () => {
