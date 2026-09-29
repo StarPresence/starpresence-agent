@@ -7,7 +7,7 @@ Review management for AI agents. `starreview` lets any agent that can run a shel
 ## Install
 
 ```bash
-npm install -g @starreview/cli
+npm install -g @starpresence/cli
 export STARREVIEW_API_KEY=sragt_...
 ```
 

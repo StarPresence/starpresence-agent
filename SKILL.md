@@ -10,7 +10,7 @@ You (the agent) draft and submit; you never post. StarReview applies the owner's
 ## Setup
 
 ```bash
-npm install -g @starreview/cli   # or: npx @starreview/cli <command>
+npm install -g @starpresence/cli   # or: npx @starpresence/cli <command>
 export STARREVIEW_API_KEY=sragt_...
 ```
 

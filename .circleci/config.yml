@@ -1,4 +1,4 @@
-# Trusted publication for @starreview/cli from CircleCI.
+# Trusted publication for @starpresence/cli from CircleCI.
 #
 # Candidate tests and packs once. Publish is the only job with the protected
 # npm context; it has no checkout or dependencies and receives only the tested
@@ -83,7 +83,7 @@ jobs:
               'package/src/cli.js',
               'package/src/mcp.js',
             ];
-            if (pkg.name !== '@starreview/cli'
+            if (pkg.name !== '@starpresence/cli'
                 || manifest.package !== pkg.name
                 || manifest.version !== pkg.version
                 || manifest.schemaVersion !== 1) {
@@ -126,7 +126,7 @@ jobs:
             version="$(node -p "require('./package.json').version")"
             expected_sha="$(node -p "require('./release/cli-$version.json').sha256")"
             filename="$(npm pack --silent --ignore-scripts --pack-destination "$release_dir")"
-            [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+            [[ "$filename" == "starpresence-cli-$version.tgz" ]] || exit 1
             mv "$release_dir/$filename" "$release_dir/package.tgz"
             actual_sha="$(sha256sum "$release_dir/package.tgz" | awk '{print $1}')"
             [[ "$actual_sha" == "$expected_sha" ]] || {
@@ -149,13 +149,13 @@ jobs:
             release_dir="/tmp/release-workspace/candidate"
             version="$(cat "$release_dir/version.txt")"
             expected_sha="$(awk '{print $1}' "$release_dir/package.tgz.sha256")"
-            spec="@starreview/cli@$version"
+            spec="@starpresence/cli@$version"
             error_file="/tmp/npm-view-error.log"
             if published="$(npm view "$spec" version --registry=https://registry.npmjs.org/ 2>"$error_file")"; then
               [[ "$published" == "$version" ]] || exit 1
               mkdir -p /tmp/existing
               filename="$(npm pack "$spec" --silent --ignore-scripts --pack-destination /tmp/existing --registry=https://registry.npmjs.org/)"
-              [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+              [[ "$filename" == "starpresence-cli-$version.tgz" ]] || exit 1
               actual_sha="$(sha256sum "/tmp/existing/$filename" | awk '{print $1}')"
               [[ "$actual_sha" == "$expected_sha" ]] || {
                 echo "Version exists with different bytes; bump the version."
@@ -245,7 +245,7 @@ jobs:
               echo "Exact $version bytes already exist; no OIDC token requested."
               exit 0
             fi
-            spec="@starreview/cli@$version"
+            spec="@starpresence/cli@$version"
             error_file="/tmp/npm-view-error.log"
             if npm view "$spec" version --registry=https://registry.npmjs.org/ 2>"$error_file"; then
               echo "Refusing to overwrite an existing registry version."
@@ -271,7 +271,7 @@ jobs:
             version="$(cat "$release_dir/version.txt")"
             expected_sha="$(awk '{print $1}' "$release_dir/package.tgz.sha256")"
             (cd "$release_dir" && sha256sum --check package.tgz.sha256)
-            spec="@starreview/cli@$version"
+            spec="@starpresence/cli@$version"
             for attempt in {1..12}; do
               published="$(npm view "$spec" version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
               [[ "$published" == "$version" ]] && break
@@ -285,7 +285,7 @@ jobs:
               [[ "$attempt" != 6 ]] || exit 1
               sleep 5
             done
-            [[ "$filename" == "starreview-cli-$version.tgz" ]] || exit 1
+            [[ "$filename" == "starpresence-cli-$version.tgz" ]] || exit 1
             actual_sha="$(sha256sum "/tmp/registry/$filename" | awk '{print $1}')"
             [[ "$actual_sha" == "$expected_sha" ]] || exit 1
             printf '%s\n' \
